@@ -78,15 +78,17 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
         )
     lines.append(click.style(week_header, fg="cyan", bold=True))
 
-    # Cheapest price across the week's days (each day's own cheapest train).
-    # Used to flag the cheapest day(s); only meaningful when prices vary.
-    day_mins = [
-        min(t["price_pence"] for t in record[d]["trains"])
+    # Cheapest price among all the trains shown this week (the two per day).
+    # Used to flag the cheapest option(s); computed fresh, never stored, since
+    # it shifts as new prices arrive. Only meaningful when some train is dearer.
+    shown_prices = [
+        t["price_pence"]
         for d in date_strs
-        if d in record and record[d]["trains"]
+        if d in record
+        for t in sorted(record[d]["trains"], key=lambda t: t["price_pence"])[:2]
     ]
-    week_min = min(day_mins) if day_mins else None
-    cheaper_than_rest = bool(day_mins) and max(day_mins) > week_min
+    week_min = min(shown_prices) if shown_prices else None
+    has_cheaper = bool(shown_prices) and max(shown_prices) > week_min
 
     for date_str in date_strs:
         date = dt.date.fromisoformat(date_str)
@@ -116,10 +118,9 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             # belongs on the cheapest train (the first line).
             change = _price_change_suffix(day_data, train["price_pence"]) if i == 0 else ""
             line = _train_line(train, change, date, today)
-            # Flag the cheapest day(s) of the week — computed fresh, never stored,
-            # since it shifts as new prices come in. Only when there is a pricier
-            # day to be cheaper than (no point labelling a lone or all-equal set).
-            if i == 0 and cheaper_than_rest and train["price_pence"] == week_min:
+            # Flag every train at the week's cheapest price — but only when a
+            # dearer train exists (nothing to be "cheaper" than otherwise).
+            if has_cheaper and train["price_pence"] == week_min:
                 line += click.style("  ← cheaper", fg="green", bold=True)
             lines.append(line)
 

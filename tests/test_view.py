@@ -205,6 +205,21 @@ def test_cheaper_absent_for_lone_day():
     assert not any("cheaper" in l for l in lines)
 
 
+def test_cheaper_marks_within_day_cheaper_train_even_when_days_match():
+    # Every day has the same pair (14.90 + 18.00). The cheaper 14.90 train on
+    # each day should be flagged, even though the days look identical.
+    def _pair(ds):
+        return {"checked_at": "2026-06-06T10:00:00", "trains": [
+            {"depart": "05:46", "price_pence": 1490, "is_advance": True},
+            {"depart": "06:05", "price_pence": 1800, "is_advance": True},
+        ]}
+    record = {_TUE: _pair(_TUE), _WED: _pair(_WED), _THU: _pair(_THU)}
+    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
+    cheaper = [l for l in lines if "cheaper" in l]
+    assert len(cheaper) == 3
+    assert all("14.90" in l for l in cheaper)
+
+
 def test_cheaper_uses_day_cheapest_when_multiple_trains():
     # Wednesday's cheapest train (1400) is the week minimum even though it also
     # has a dearer train; the marker lands on Wednesday.
