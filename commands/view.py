@@ -5,16 +5,21 @@ import datetime as dt
 import click
 
 from core.config import load_config
+from core.dates import WEEKDAY_ABBR, MONTH_ABBR
 from core.storage import load_record, META_KEY
 from commands.search import CONFIG_FILE
 
-_SHORT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-_SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+# How many trains are shown (and considered for the cheap markers) per day.
+_TRAINS_PER_DAY = 2
+
+
+def cheapest_trains(trains: list[dict], n: int = _TRAINS_PER_DAY) -> list[dict]:
+    """The n cheapest trains for a day, cheapest first."""
+    return sorted(trains, key=lambda t: t["price_pence"])[:n]
 
 
 def _fmt_short(d: dt.date) -> str:
-    return f"{d.day:02d} {_SHORT_MONTHS[d.month - 1]}"
+    return f"{d.day:02d} {MONTH_ABBR[d.month - 1]}"
 
 
 def _week_monday(date_str: str) -> dt.date:
@@ -24,11 +29,11 @@ def _week_monday(date_str: str) -> dt.date:
 
 def _fmt_checked(checked_at: str) -> str:
     d = dt.date.fromisoformat(checked_at[:10])
-    return f"{d.day:02d} {_SHORT_MONTHS[d.month - 1]} {d.year}"
+    return f"{d.day:02d} {MONTH_ABBR[d.month - 1]} {d.year}"
 
 
 def _fmt_full(d: dt.date) -> str:
-    return f"{_SHORT_DAYS[d.weekday()]} {_fmt_short(d)} {d.year}"
+    return f"{WEEKDAY_ABBR[d.weekday()]} {_fmt_short(d)} {d.year}"
 
 
 def horizon_note(record: dict) -> str | None:
@@ -125,7 +130,7 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
 
     for date_str in date_strs:
         date = dt.date.fromisoformat(date_str)
-        day_name = _SHORT_DAYS[date.weekday()]
+        day_name = WEEKDAY_ABBR[date.weekday()]
 
         if date_str not in record:
             lines.append(f"  {day_name} {_fmt_short(date)}   (no data)")
@@ -145,8 +150,7 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             lines.append(_date_colour("    (no trains)", date, today))
             continue
 
-        cheapest = sorted(trains, key=lambda t: t["price_pence"])[:2]
-        for i, train in enumerate(cheapest):
+        for i, train in enumerate(cheapest_trains(trains)):
             # Price history tracks the day's cheapest, so the movement marker
             # belongs on the cheapest train (the first line).
             change = _price_change_suffix(day_data, train["price_pence"]) if i == 0 else ""
@@ -167,7 +171,7 @@ def displayed_prices(record: dict, date_strs: list[str]) -> list[int]:
         t["price_pence"]
         for d in date_strs
         if d in record and record[d]["trains"]
-        for t in sorted(record[d]["trains"], key=lambda t: t["price_pence"])[:2]
+        for t in cheapest_trains(record[d]["trains"])
     ]
 
 
