@@ -61,6 +61,15 @@ class TrainClient:
             self._token = None   # token rotated — drop cache so next run rescrapes
             click.echo("Access token rejected; clearing cache.", err=True)
             return None
+        if resp.status_code == 422:
+            try:
+                errors = resp.json().get("errors", [])
+            except Exception:
+                errors = []
+            if any(e.get("errorCode") == "OutwardTimebandTooFarAhead" for e in errors):
+                return None  # beyond booking horizon — expected, not an error
+            click.echo(f"API error {resp.status_code}: {resp.text[:200]}", err=True)
+            return None
         if resp.status_code != 200:
             click.echo(f"API error {resp.status_code}: {resp.text[:200]}", err=True)
             return None
