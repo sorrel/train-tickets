@@ -9,18 +9,18 @@ A Python CLI tool for looking up UK train advance ticket prices.
 ## Running Commands
 
 ```bash
-uv run python train_tickets.py <command>
+uv run python tickets.py <command>
 
 # Examples
-uv run python train_tickets.py status
-uv run python train_tickets.py search "London Kings Cross" "Edinburgh" 2026-07-01
+uv run python tickets.py status
+uv run python tickets.py search "London Kings Cross" "Edinburgh" 2026-07-01
 ```
 
 ## Architecture
 
 ### Entry Point
 
-- `train_tickets.py` — Click CLI, registers all commands
+- `tickets.py` — Click CLI, registers all commands
 
 ### Core
 
