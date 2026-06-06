@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Python CLI tool for looking up UK train advance ticket prices on a fixed commuter route (Tunbridge Wells → London Terminals, morning peak).
+A Python CLI tool for looking up UK train advance ticket prices on a commuter route the user configures (morning peak).
 
 **Main purpose:** Query a train pricing API and present journey options and fares clearly in the terminal. Given any date, find that week's cheapest advance fares on the configured travel days.
 
@@ -22,7 +22,7 @@ uv run python tickets.py record 2026-08-15 --days Mon,Fri
 ```
 tickets.py                  CLI entry point — registers all commands
 core/
-  config.py                 Load tunbridge-wells.local → JourneyConfig dataclass
+  config.py                 Load config.local.json → JourneyConfig dataclass
   dates.py                  Week calculation (Mon–Sun for a given date)
   fares.py                  Parse raw API responses into fare summaries
   client.py                 TrainClient — all HTTP requests, token caching
@@ -31,8 +31,9 @@ commands/
   setup.py                  ColouredGroup and status command
   search.py                 search command
   record.py                 record command (search + persist)
-tunbridge-wells.local       Committed config: station codes, days, time window
-tests/                      27 tests (all HTTP mocked, no live API calls)
+config.example.json         Committed generic template (copy to config.local.json)
+config.local.json           Personal route config — gitignored, never committed
+tests/                      37 tests (all HTTP mocked, no live API calls)
 ```
 
 ## API
