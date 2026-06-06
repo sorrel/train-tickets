@@ -59,15 +59,19 @@ def _train_line(train: dict, change: str, date: dt.date, today: dt.date) -> str:
 
 
 def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date,
-                cheapest_price: int | None = None, flag_cheaper: bool = False) -> list[str]:
+                cheapest_price: int | None = None, flag_cheapest: bool = False) -> list[str]:
     """Return display lines for one week (pure — no I/O, easy to test).
 
     Each day shows its two cheapest trains (cheapest first), labelled by
     departure time so it is clear which train each price belongs to.
 
-    `cheapest_price` is the cheapest fare across the *whole* view; when
-    `flag_cheaper` is set, every train at that price is marked "← cheaper", so
-    a week priced uniformly at the global low is still flagged.
+    Two highlights:
+    - "← cheapest" (green) — the cheapest fare across the *whole* view
+      (`cheapest_price`), flagged when `flag_cheapest` is set.
+    - "← cheaper" (yellow) — the cheapest fare within *this week*, flagged when
+      the week has a dearer train. A train that is the global cheapest takes
+      the green label, so yellow only ever marks a week whose own low sits
+      above the global low.
     """
     lines = []
 
@@ -82,6 +86,12 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             fg="bright_black",
         )
     lines.append(click.style(week_header, fg="cyan", bold=True))
+
+    # Cheapest fare shown this week, and whether a dearer train sits alongside
+    # it — the basis for the per-week "← cheaper" (yellow) flag.
+    week_prices = displayed_prices(record, date_strs)
+    week_min = min(week_prices) if week_prices else None
+    week_has_dearer = bool(week_prices) and max(week_prices) > week_min
 
     for date_str in date_strs:
         date = dt.date.fromisoformat(date_str)
@@ -111,12 +121,11 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             # belongs on the cheapest train (the first line).
             change = _price_change_suffix(day_data, train["price_pence"]) if i == 0 else ""
             line = _train_line(train, change, date, today)
-            # Flag every train at the cheapest fare in the whole view, as long
-            # as a dearer train exists somewhere (nothing to be cheaper than
-            # otherwise). Comparing across the view — not within the week — means
-            # a week priced uniformly at the global low still gets flagged.
-            if flag_cheaper and train["price_pence"] == cheapest_price:
-                line += click.style("  ← cheaper", fg="green", bold=True)
+            price = train["price_pence"]
+            if flag_cheapest and price == cheapest_price:
+                line += click.style("  ← cheapest", fg="green", bold=True)
+            elif week_has_dearer and price == week_min:
+                line += click.style("  ← cheaper", fg="yellow", bold=True)
             lines.append(line)
 
     return lines
@@ -162,12 +171,12 @@ def view_command(show_all: bool):
     shown_dates = [d for date_strs in weeks.values() for d in date_strs]
     prices = displayed_prices(record, shown_dates)
     cheapest_price = min(prices) if prices else None
-    flag_cheaper = bool(prices) and max(prices) > cheapest_price
+    flag_cheapest = bool(prices) and max(prices) > cheapest_price
 
     click.echo(f"{cfg.origin_name} → {cfg.destination_name}\n")
 
     for monday, date_strs in sorted(weeks.items()):
         for line in render_week(monday, date_strs, record, today,
-                                cheapest_price, flag_cheaper):
+                                cheapest_price, flag_cheapest):
             click.echo(line)
         click.echo()
