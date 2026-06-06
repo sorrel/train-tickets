@@ -160,6 +160,68 @@ def test_render_week_shows_only_one_train_when_only_one_stored():
 
 
 # ---------------------------------------------------------------------------
+# "cheaper" highlight — computed fresh, marks the cheapest day(s) of the week
+# ---------------------------------------------------------------------------
+
+_WK_MONDAY = dt.date(2026, 8, 10)
+_TUE, _WED, _THU = "2026-08-11", "2026-08-12", "2026-08-13"
+
+
+def test_cheaper_marks_the_single_cheapest_day():
+    record = {
+        _TUE: _day(_TUE, price_pence=1800),
+        _WED: _day(_WED, price_pence=1500),   # cheapest
+        _THU: _day(_THU, price_pence=2100),
+    }
+    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
+    cheaper = [l for l in lines if "cheaper" in l]
+    assert len(cheaper) == 1
+    assert "15.00" in cheaper[0]
+
+
+def test_cheaper_marks_all_days_tied_at_minimum():
+    record = {
+        _TUE: _day(_TUE, price_pence=1500),   # tie cheapest
+        _WED: _day(_WED, price_pence=1500),   # tie cheapest
+        _THU: _day(_THU, price_pence=2100),
+    }
+    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
+    assert len([l for l in lines if "cheaper" in l]) == 2
+
+
+def test_cheaper_absent_when_all_days_same_price():
+    record = {
+        _TUE: _day(_TUE, price_pence=1800),
+        _WED: _day(_WED, price_pence=1800),
+        _THU: _day(_THU, price_pence=1800),
+    }
+    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
+    assert not any("cheaper" in l for l in lines)
+
+
+def test_cheaper_absent_for_lone_day():
+    record = {_WED: _day(_WED, price_pence=1500)}
+    lines = render_week(_WK_MONDAY, [_WED], record, TODAY)
+    assert not any("cheaper" in l for l in lines)
+
+
+def test_cheaper_uses_day_cheapest_when_multiple_trains():
+    # Wednesday's cheapest train (1400) is the week minimum even though it also
+    # has a dearer train; the marker lands on Wednesday.
+    record = {
+        _TUE: _day(_TUE, price_pence=1800),
+        _WED: {"checked_at": "2026-06-06T10:00:00", "trains": [
+            {"depart": "07:15", "price_pence": 1400, "is_advance": True},
+            {"depart": "07:45", "price_pence": 1900, "is_advance": True},
+        ]},
+    }
+    lines = render_week(_WK_MONDAY, [_TUE, _WED], record, TODAY)
+    cheaper = [l for l in lines if "cheaper" in l]
+    assert len(cheaper) == 1
+    assert "14.00" in cheaper[0]
+
+
+# ---------------------------------------------------------------------------
 # view_command — future-only by default, --all to include past/today
 # ---------------------------------------------------------------------------
 
