@@ -14,7 +14,7 @@ dev = [
 ]
 
 [project.scripts]
-trains = "train_tickets:cli"
+trains = "tickets:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "commands"]
