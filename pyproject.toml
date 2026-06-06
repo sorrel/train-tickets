@@ -1,0 +1,24 @@
+[project]
+name = "train-tickets"
+version = "0.1.0"
+description = "CLI for looking up UK train advance ticket prices"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.0.0",
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+trains = "train_tickets:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "commands"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
