@@ -358,3 +358,56 @@ def test_view_message_when_only_past_dates():
     result = _run_view(record, dt.date(2026, 6, 6))
     assert result.exit_code == 0
     assert "No future dates" in result.output
+
+
+# ---------------------------------------------------------------------------
+# horizon note — "no trains on sale from X onwards"
+# ---------------------------------------------------------------------------
+
+def test_view_shows_horizon_note_from_meta():
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "meta": {"no_trains_from": "2026-09-15", "checked_at": "2026-06-02T10:00:00"},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "No trains on sale from Tue 15 Sep 2026 onwards" in result.output
+    assert "checked 02 Jun 2026" in result.output
+
+
+def test_view_does_not_render_empty_days_as_rows():
+    # Legacy empty-train days are folded into the note, not shown as "(no trains)"
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "2026-09-15": {"checked_at": "2026-06-02T10:00:00", "trains": []},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "(no trains)" not in result.output
+    assert "No trains on sale from Tue 15 Sep 2026 onwards" in result.output
+
+
+def test_view_note_uses_earliest_of_meta_and_empty_days():
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "2026-09-22": {"checked_at": "2026-06-04T10:00:00", "trains": []},
+        "meta": {"no_trains_from": "2026-09-15", "checked_at": "2026-06-02T10:00:00"},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert "from Tue 15 Sep 2026" in result.output   # the earlier of the two
+    assert "22 Sep" not in result.output
+
+
+def test_view_no_note_when_no_horizon():
+    record = {"2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00")}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert "No trains on sale" not in result.output
+
+
+def test_view_meta_key_not_treated_as_a_day():
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "meta": {"no_trains_from": "2026-09-15", "checked_at": "2026-06-02T10:00:00"},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0   # would crash if "meta" were parsed as a date

@@ -4,7 +4,8 @@ from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
 from core.fares import TrainOption
-from commands.search import format_day, day_payload
+from core.storage import load_record, save_day, META_KEY
+from commands.search import format_day, day_payload, search_command
 
 
 def test_format_day_shows_trains_in_time_order():
@@ -90,3 +91,68 @@ def test_day_payload_no_previous_means_no_history():
     options = [TrainOption("07:00", "08:00", 1250, True, "/b")]
     payload = day_payload(options, "2026-06-06T10:00:00", previous=None)
     assert "price_history" not in payload
+
+
+# ---------------------------------------------------------------------------
+# search_command — persistence: saves trains, skips empty days, records horizon
+# ---------------------------------------------------------------------------
+
+def _cfg(storage_path):
+    cfg = MagicMock()
+    cfg.travel_days = ["Tue"]
+    cfg.storage_path = storage_path
+    cfg.request_pause_seconds = 0.0
+    cfg.origin_name = "Origin"
+    cfg.destination_name = "Dest"
+    cfg.window_start = "05:55"
+    cfg.window_end = "08:05"
+    cfg.show_count = 5
+    cfg.origin_nlc = "0000"
+    cfg.destination_nlc = "0000"
+    return cfg
+
+
+def _run_search(storage, lookup_result, week_date, search_dates):
+    """Invoke search with lookup_day and network stubbed out."""
+    cfg = _cfg(storage)
+    with patch("commands.search.load_config", return_value=cfg), \
+         patch("commands.search.TrainClient"), \
+         patch("commands.search.travel_dates", return_value=search_dates), \
+         patch("commands.search.lookup_day", side_effect=lookup_result), \
+         patch("commands.search.dt") as mock_dt:
+        mock_dt.datetime.now.return_value.replace.return_value.isoformat.return_value = \
+            "2026-06-06T10:00:00"
+        mock_dt.date.today.return_value = dt.date(2026, 6, 6)
+        return CliRunner().invoke(search_command, [week_date])
+
+
+def test_search_does_not_save_empty_days_but_records_horizon(tmp_path):
+    storage = tmp_path / "prices.json"
+    result = _run_search(storage, lambda *a: [], "2026-09-15", [dt.date(2026, 9, 15)])
+    assert result.exit_code == 0
+    record = load_record(storage)
+    assert "2026-09-15" not in record          # empty day not saved
+    assert record[META_KEY]["no_trains_from"] == "2026-09-15"
+    assert record[META_KEY]["checked_at"] == "2026-06-06T10:00:00"
+
+
+def test_search_removes_a_previously_saved_day_that_now_has_no_trains(tmp_path):
+    storage = tmp_path / "prices.json"
+    save_day(storage, "2026-09-15", {"checked_at": "2026-05-01T10:00:00",
+                                      "trains": [{"depart": "06:05", "price_pence": 730,
+                                                  "is_advance": True}]})
+    result = _run_search(storage, lambda *a: [], "2026-09-15", [dt.date(2026, 9, 15)])
+    assert result.exit_code == 0
+    assert "2026-09-15" not in load_record(storage)
+
+
+def test_search_saves_days_with_trains(tmp_path):
+    storage = tmp_path / "prices.json"
+    opts = [TrainOption("06:05", "06:53", 1250, True, "/a")]
+    result = _run_search(storage, lambda *a: opts, "2026-08-11", [dt.date(2026, 8, 11)])
+    assert result.exit_code == 0
+    record = load_record(storage)
+    assert record["2026-08-11"]["trains"] == [
+        {"depart": "06:05", "price_pence": 1250, "is_advance": True}
+    ]
+    assert META_KEY not in record

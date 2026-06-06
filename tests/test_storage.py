@@ -1,4 +1,6 @@
-from core.storage import load_record, save_day
+from core.storage import (
+    load_record, save_day, remove_day, write_meta, updated_horizon, META_KEY,
+)
 
 
 def test_load_record_missing_file_returns_empty(tmp_path):
@@ -19,3 +21,65 @@ def test_save_day_merges_without_clobbering(tmp_path):
     save_day(path, "2026-08-13", {"trains": [2]})
     record = load_record(path)
     assert set(record) == {"2026-08-12", "2026-08-13"}
+
+
+def test_remove_day_drops_entry(tmp_path):
+    path = tmp_path / "prices.json"
+    save_day(path, "2026-08-12", {"trains": [1]})
+    remove_day(path, "2026-08-12")
+    assert load_record(path) == {}
+
+
+def test_remove_day_missing_is_noop(tmp_path):
+    path = tmp_path / "prices.json"
+    save_day(path, "2026-08-12", {"trains": [1]})
+    remove_day(path, "2026-08-13")   # not present
+    assert set(load_record(path)) == {"2026-08-12"}
+
+
+def test_write_meta_sets_and_clears(tmp_path):
+    path = tmp_path / "prices.json"
+    save_day(path, "2026-08-12", {"trains": [1]})
+    write_meta(path, {"no_trains_from": "2026-09-15", "checked_at": "2026-06-06T10:00:00"})
+    assert load_record(path)[META_KEY]["no_trains_from"] == "2026-09-15"
+    write_meta(path, None)
+    assert META_KEY not in load_record(path)
+    assert "2026-08-12" in load_record(path)   # days untouched
+
+
+# --- updated_horizon (pure) ------------------------------------------------
+
+def test_horizon_set_when_first_no_trains_seen():
+    meta = updated_horizon(None, [], ["2026-09-15", "2026-09-16"], "2026-06-06T10:00:00")
+    assert meta == {"no_trains_from": "2026-09-15", "checked_at": "2026-06-06T10:00:00"}
+
+
+def test_horizon_none_when_all_dates_have_trains():
+    assert updated_horizon(None, ["2026-08-12"], [], "2026-06-06T10:00:00") is None
+
+
+def test_horizon_keeps_earliest_and_original_checked_date():
+    current = {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
+    # A later re-check still finds no trains from the same date — keep the
+    # original discovery date, not the new check.
+    meta = updated_horizon(current, [], ["2026-09-15"], "2026-06-06T10:00:00")
+    assert meta == {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
+
+
+def test_horizon_advances_earlier_with_new_check_date():
+    current = {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
+    meta = updated_horizon(current, [], ["2026-09-08"], "2026-06-06T10:00:00")
+    assert meta == {"no_trains_from": "2026-09-08", "checked_at": "2026-06-06T10:00:00"}
+
+
+def test_horizon_cleared_when_trains_appear_at_or_after_it():
+    current = {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
+    # Trains now found on 2026-09-15 → old horizon gone; no new no-train dates.
+    assert updated_horizon(current, ["2026-09-15"], [], "2026-06-06T10:00:00") is None
+
+
+def test_horizon_moves_forward_when_boundary_recedes():
+    current = {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
+    # Tue now has trains (clears 15th), but Thu 17th still has none → new horizon.
+    meta = updated_horizon(current, ["2026-09-15"], ["2026-09-17"], "2026-06-06T10:00:00")
+    assert meta == {"no_trains_from": "2026-09-17", "checked_at": "2026-06-06T10:00:00"}
