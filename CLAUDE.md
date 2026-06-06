@@ -51,7 +51,7 @@ This is a free public endpoint for ordinary customers; we are not owed extra ser
 
 - The client sleeps between every API call (`request_pause_seconds` from config).
 - The token is cached in memory and reused across calls.
-- Budget: a full week lookup is approximately 15 spaced requests (3 days × (1 plan + 4 detail fetches)).
+- Budget: a full week lookup is roughly 27 spaced requests (3 days × (1 plan + ~8 detail fetches)). The plan carries no departure times, so we must fetch the detail of every journey it returns to sort by departure and pick the earliest few. A morning window returns only a handful of journeys, so this stays modest — but it is one detail call per journey, not per displayed train.
 - Never run load-style request floods, even during development or testing.
 - Tests mock all HTTP and never hit the live API.
 

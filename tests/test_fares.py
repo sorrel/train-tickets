@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from core.fares import parse_plan, cheapest_n, parse_times, build_options, TrainOption
+from core.fares import parse_plan, cheapest_n, earliest_n, parse_times, build_options, TrainOption
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -36,6 +36,43 @@ def test_is_advance_false_when_only_anytime():
     anytime_only = [o for o in options if o["price_pence"] == 2490]
     assert anytime_only
     assert all(o["is_advance"] is False for o in anytime_only)
+
+
+def test_earliest_n_returns_first_n():
+    assert earliest_n([1, 2, 3, 4, 5], 3) == [1, 2, 3]
+
+
+def test_earliest_n_returns_all_when_fewer_than_n():
+    assert earliest_n([1], 5) == [1]
+
+
+def _detail(dep: str, arr: str) -> dict:
+    return {"result": {
+        "origin": {"time": {"scheduledTime": f"2026-06-16T{dep}:00"}},
+        "destination": {"time": {"scheduledTime": f"2026-06-16T{arr}:00"}},
+    }}
+
+
+def test_earliest_selection_uses_departure_time_not_plan_order():
+    """The plan's order is non-temporal; the earliest trains must still win.
+
+    build_options fetches times for every journey and sorts by departure, so
+    earliest_n then yields the genuinely earliest departures even when the plan
+    lists a later train first.
+    """
+    parsed = [
+        {"journey_ref": "/late", "price_pence": 1000, "is_advance": True},
+        {"journey_ref": "/early", "price_pence": 2000, "is_advance": False},
+        {"journey_ref": "/mid", "price_pence": 1500, "is_advance": True},
+    ]
+    details = {
+        "/late": _detail("07:38", "08:24"),
+        "/early": _detail("06:05", "06:53"),
+        "/mid": _detail("06:40", "07:25"),
+    }
+    options = build_options(parsed, fetch_detail=lambda ref: details[ref])
+    earliest2 = earliest_n(options, 2)
+    assert [o.depart for o in earliest2] == ["06:05", "06:40"]
 
 
 def test_cheapest_n_returns_n_lowest_prices():
