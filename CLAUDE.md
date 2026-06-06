@@ -13,8 +13,9 @@ uv run python tickets.py <command>
 
 # Examples
 uv run python tickets.py status
-uv run python tickets.py search 2026-08-15
-uv run python tickets.py record 2026-08-15 --days Mon,Fri
+uv run python tickets.py search 2026-08-15            # one week, saved as it goes
+uv run python tickets.py view                          # browse saved fares by week
+uv run python tickets.py refresh-price-data            # slow bulk walk, all future weeks
 ```
 
 ## Architecture
@@ -29,12 +30,17 @@ core/
   storage.py                Read/write local JSON price record
 commands/
   setup.py                  ColouredGroup and status command
-  search.py                 search command
-  record.py                 record command (search + persist)
+  search.py                 search command + gather_week (shared per-week gathering)
+  view.py                   view command (browse saved fares, cheap markers, horizon note)
+  refresh.py                refresh-price-data command (slow bulk walk over future weeks)
 config.example.json         Committed generic template (copy to config.local.json)
 config.local.json           Personal route config — gitignored, never committed
-tests/                      37 tests (all HTTP mocked, no live API calls)
+tests/                      all HTTP mocked, no live API calls
 ```
+
+`search` and `refresh-price-data` share `gather_week` (in search.py) for the
+actual lookup/persist/horizon work — refresh is just a careful loop around it,
+not a second copy of the gathering logic.
 
 ## API
 
@@ -52,6 +58,7 @@ This is a free public endpoint for ordinary customers; we are not owed extra ser
 - The client sleeps between every API call (`request_pause_seconds` from config).
 - The token is cached in memory and reused across calls.
 - Budget: a full week lookup is roughly 27 spaced requests (3 days × (1 plan + ~8 detail fetches)). The plan carries no departure times, so we must fetch the detail of every journey it returns to sort by departure and pick the earliest few. A morning window returns only a handful of journeys, so this stays modest — but it is one detail call per journey, not per displayed train.
+- `refresh-price-data` walks every future week (~12, the advance-booking horizon), so a full run is a few hundred requests. This is acceptable *only because* it is deliberately slow: the per-call pause still applies, **and** a randomised pause (`refresh_pause_min_seconds`–`refresh_pause_max_seconds`) sits between each week. It is the opposite of a burst. Keep it that way — do not parallelise it or shorten the pauses to "speed it up".
 - Never run load-style request floods, even during development or testing.
 - Tests mock all HTTP and never hit the live API.
 

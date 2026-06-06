@@ -156,3 +156,32 @@ def test_search_saves_days_with_trains(tmp_path):
         {"depart": "06:05", "price_pence": 1250, "is_advance": True}
     ]
     assert META_KEY not in record
+
+
+# ---------------------------------------------------------------------------
+# gather_week — shared gathering used by search and refresh-price-data
+# ---------------------------------------------------------------------------
+
+def test_gather_week_calls_on_day_and_reports_found(tmp_path):
+    storage = tmp_path / "prices.json"
+    cfg = _cfg(storage)
+    opts = [TrainOption("06:05", "06:53", 1250, True, "/a")]
+    seen = []
+    with patch("commands.search.lookup_day", return_value=opts):
+        from commands.search import gather_week
+        found = gather_week(cfg_client := object(), cfg, [dt.date(2026, 8, 11)],
+                            "2026-06-06T10:00:00", {}, on_day=lambda d, o: seen.append((d, o)))
+    assert found is True
+    assert seen == [(dt.date(2026, 8, 11), opts)]
+    assert load_record(storage)["2026-08-11"]["trains"][0]["price_pence"] == 1250
+
+
+def test_gather_week_reports_not_found_when_no_trains(tmp_path):
+    storage = tmp_path / "prices.json"
+    cfg = _cfg(storage)
+    with patch("commands.search.lookup_day", return_value=[]):
+        from commands.search import gather_week
+        found = gather_week(object(), cfg, [dt.date(2026, 9, 15)],
+                            "2026-06-06T10:00:00", {})
+    assert found is False
+    assert load_record(storage)[META_KEY]["no_trains_from"] == "2026-09-15"

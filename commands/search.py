@@ -83,6 +83,35 @@ def lookup_day(client: TrainClient, cfg, date: dt.date) -> list[TrainOption]:
     return earliest_n(options, cfg.show_count)
 
 
+def gather_week(client: TrainClient, cfg, dates, now: str, existing: dict,
+                on_day=None) -> bool:
+    """Look up, persist, and update the horizon for each date in a week.
+
+    Days with trains are saved; days with none are removed (and feed the
+    booking-horizon marker) — keeping history free of empty entries. Returns
+    True if any date returned trains. `on_day(date, options)` is called after
+    each date, letting callers stream output or drive a progress bar. This is
+    the shared gathering used by both `search` and `refresh-price-data`.
+    """
+    train_dates: list[str] = []
+    no_train_dates: list[str] = []
+    for date in dates:
+        ds = date.isoformat()
+        options = lookup_day(client, cfg, date)
+        if options:
+            save_day(cfg.storage_path, ds, day_payload(options, now, existing.get(ds)))
+            train_dates.append(ds)
+        else:
+            remove_day(cfg.storage_path, ds)
+            no_train_dates.append(ds)
+        if on_day is not None:
+            on_day(date, options)
+
+    meta = updated_horizon(existing.get(META_KEY), train_dates, no_train_dates, now)
+    write_meta(cfg.storage_path, meta)
+    return bool(train_dates)
+
+
 @click.command("search")
 @click.argument("week_date")
 @click.option("--days", help="Comma-separated day names, e.g. Tue,Wed,Thu")
@@ -101,22 +130,9 @@ def search_command(week_date: str, days: str | None):
     except ValueError as e:
         raise click.BadParameter(str(e))
 
-    train_dates: list[str] = []
-    no_train_dates: list[str] = []
-    for date in dates:
-        ds = date.isoformat()
-        heading = f"{_WEEKDAYS[date.weekday()]} {ds}"
-        options = lookup_day(client, cfg, date)
+    def show(date, options):
+        heading = f"{_WEEKDAYS[date.weekday()]} {date.isoformat()}"
         click.echo(format_day(heading, options))
-        if options:
-            save_day(cfg.storage_path, ds, day_payload(options, now, existing.get(ds)))
-            train_dates.append(ds)
-        else:
-            # No trains means we are beyond the booking horizon — don't keep an
-            # empty day in history; record only the horizon marker (below).
-            remove_day(cfg.storage_path, ds)
-            no_train_dates.append(ds)
         click.echo()
 
-    meta = updated_horizon(existing.get(META_KEY), train_dates, no_train_dates, now)
-    write_meta(cfg.storage_path, meta)
+    gather_week(client, cfg, dates, now, existing, on_day=show)

@@ -33,3 +33,8 @@ def test_status_command_registered():
 def test_view_command_registered():
     from tickets import cli
     assert "view" in cli.commands
+
+
+def test_refresh_command_registered():
+    from tickets import cli
+    assert "refresh-price-data" in cli.commands
