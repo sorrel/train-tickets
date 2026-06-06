@@ -1,4 +1,4 @@
-"""Search command — four cheapest morning trains per travel day, in time order.
+"""Search command — the earliest morning trains per travel day, in time order.
 
 Results are saved after every lookup. When the cheapest price changes from the
 previous lookup the old price is appended to price_history on that day's record.
@@ -11,14 +11,13 @@ import click
 
 from core.config import load_config
 from core.client import TrainClient
-from core.dates import travel_dates
+from core.dates import travel_dates, WEEKDAY_FULL
 from core.fares import parse_plan, earliest_n, build_options, TrainOption
 from core.storage import (
     load_record, save_day, remove_day, write_meta, updated_horizon, META_KEY,
 )
 
 CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
-_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def format_day(heading: str, options: list[TrainOption]) -> str:
@@ -131,7 +130,7 @@ def search_command(week_date: str, days: str | None):
         raise click.BadParameter(str(e))
 
     def show(date, options):
-        heading = f"{_WEEKDAYS[date.weekday()]} {date.isoformat()}"
+        heading = f"{WEEKDAY_FULL[date.weekday()]} {date.isoformat()}"
         click.echo(format_day(heading, options))
         click.echo()
 

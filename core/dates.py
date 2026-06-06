@@ -5,7 +5,13 @@ Weeks run Monday to Sunday. Any date belongs to exactly one week.
 
 import datetime as dt
 
-_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+# Calendar names live here, the calendar module, so display code in commands/
+# doesn't keep its own copies. Indexed by weekday()/month-1.
+WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+WEEKDAY_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                "Friday", "Saturday", "Sunday"]
+MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 # Accepted date formats, tried in order. Ambiguous numeric formats are day-first
 # (British), so 08/06/2026 means 8 June, not 6 August. ISO is tried first because
@@ -48,8 +54,8 @@ def travel_dates(date_str: str, days: list[str] | None = None) -> list[dt.date]:
     if days is None:
         days = ["Tue", "Wed", "Thu"]
     for name in days:
-        if name not in _DAYS:
-            raise ValueError(f"Unknown day '{name}'. Use one of: {', '.join(_DAYS)}.")
+        if name not in WEEKDAY_ABBR:
+            raise ValueError(f"Unknown day '{name}'. Use one of: {', '.join(WEEKDAY_ABBR)}.")
     monday, _ = week_of(date_str)
-    wanted = sorted(_DAYS.index(name) for name in days)
+    wanted = sorted(WEEKDAY_ABBR.index(name) for name in days)
     return [monday + dt.timedelta(days=offset) for offset in wanted]

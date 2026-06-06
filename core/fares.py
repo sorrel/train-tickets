@@ -35,11 +35,6 @@ def parse_plan(plan: dict) -> list[dict]:
     return options
 
 
-def cheapest_n(options: list[dict], n: int) -> list[dict]:
-    """Return the n options with the lowest price (ascending by price)."""
-    return sorted(options, key=lambda o: o["price_pence"])[:n]
-
-
 def earliest_n(options: list, n: int) -> list:
     """Return the first n options.
 

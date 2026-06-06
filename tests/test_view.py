@@ -4,9 +4,19 @@ from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
 from commands.view import (
-    render_week, view_command, displayed_prices,
+    render_week, view_command, displayed_prices, cheapest_trains,
     _week_monday, _fmt_short, _fmt_checked, _price_change_suffix,
 )
+
+
+def test_cheapest_trains_returns_two_cheapest_in_order():
+    trains = [
+        {"depart": "07:00", "price_pence": 2100, "is_advance": False},
+        {"depart": "07:15", "price_pence": 1400, "is_advance": True},
+        {"depart": "07:45", "price_pence": 1900, "is_advance": True},
+    ]
+    chosen = cheapest_trains(trains)
+    assert [t["price_pence"] for t in chosen] == [1400, 1900]
 
 
 def _day(date_str: str, price_pence: int = 1250, is_advance: bool = True,

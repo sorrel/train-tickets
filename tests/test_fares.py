@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from core.fares import parse_plan, cheapest_n, earliest_n, parse_times, build_options, TrainOption
+from core.fares import parse_plan, earliest_n, parse_times, build_options, TrainOption
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -73,15 +73,6 @@ def test_earliest_selection_uses_departure_time_not_plan_order():
     options = build_options(parsed, fetch_detail=lambda ref: details[ref])
     earliest2 = earliest_n(options, 2)
     assert [o.depart for o in earliest2] == ["06:05", "06:40"]
-
-
-def test_cheapest_n_returns_n_lowest_prices():
-    options = parse_plan(_plan())
-    top4 = cheapest_n(options, 4)
-    assert len(top4) == 4
-    prices = [o["price_pence"] for o in top4]
-    assert prices == sorted(prices)
-    assert max(prices) <= min(o["price_pence"] for o in options if o not in top4)
 
 
 def test_parse_times_returns_hh_mm():
