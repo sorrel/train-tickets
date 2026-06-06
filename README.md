@@ -4,7 +4,7 @@ A Python CLI tool for looking up UK train advance ticket prices on a commuter ro
 
 ## Commands
 
-Given any date, the tool finds that date's week (Mon–Sun) and reports the four cheapest morning trains on your configured route and time window, on the configured travel days (Tue/Wed/Thu by default, overridable with `--days`).
+Given any date, the tool finds that date's week and reports the four cheapest morning trains on your configured route and time window, on the configured days (Tue/Wed/Thu by default, overridable with `--days`).
 
 | Command | Description |
 |---------|-------------|
@@ -26,7 +26,7 @@ uv run python tickets.py search 2026-08-15 --days Mon,Fri
 uv run python tickets.py status
 ```
 
-The `record` command saves results to a local JSON file (`~/.train-tickets/prices.json`) kept outside the repository so prices accumulate over time without being committed.
+The `record` command saves results to a local JSON file (`~/.train-tickets/prices.json`) kept outside the repo so prices accumulate over time without being committed.
 
 ## Configuration
 
