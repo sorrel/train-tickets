@@ -40,7 +40,15 @@ uv run python tickets.py search "London Kings Cross" "Edinburgh" 2026-07-01
 
 ## Git Workflow
 
-Single-person project — commit directly to `main`. No feature branches needed.
+Always work on a feature branch — `main` is protected and requires a PR to merge.
+
+```bash
+git checkout -b feature/description
+# ... make changes, commit ...
+gh pr create
+```
+
+Squash merge only. Branch is deleted automatically after merge.
 
 ## Dependencies
 
