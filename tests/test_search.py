@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
 from core.fares import TrainOption
-from commands.search import format_day, day_payload, search_command
+from commands.search import format_day, day_payload
 
 
 def test_format_day_shows_trains_in_time_order():
@@ -15,11 +15,8 @@ def test_format_day_shows_trains_in_time_order():
     ]
     text = format_day("Tuesday 2026-08-11", options)
     assert "Tuesday 2026-08-11" in text
-    # Departure times appear in order
     assert text.index("06:10") < text.index("06:40") < text.index("07:12")
-    # Prices rendered in pounds
     assert "£16.40" in text and "£24.90" in text
-    # Anytime-only train flagged differently from Advance
     assert "Anytime" in text and "Advance" in text
 
 
@@ -36,42 +33,57 @@ def test_day_payload_serialises_trains():
     ]
 
 
-def _make_cfg(storage_path):
-    cfg = MagicMock()
-    cfg.travel_days = ["Tue"]
-    cfg.storage_path = storage_path
-    cfg.request_pause_seconds = 0.0
-    cfg.origin_name = "Origin"
-    cfg.destination_name = "Dest"
-    cfg.window_start = "07:00"
-    cfg.window_end = "09:00"
-    cfg.show_cheapest = 4
-    cfg.origin_nlc = "0000"
-    cfg.destination_nlc = "0000"
-    return cfg
+def test_day_payload_no_history_when_price_unchanged():
+    previous = {
+        "checked_at": "2026-06-01T09:00:00",
+        "trains": [{"depart": "07:00", "arrive": "08:00",
+                    "price_pence": 1640, "is_advance": True}],
+    }
+    options = [TrainOption("07:00", "08:00", 1640, True, "/b")]
+    payload = day_payload(options, "2026-06-06T10:00:00", previous)
+    assert "price_history" not in payload
 
 
-def test_search_skips_frozen_past_date(tmp_path):
-    """A past date already in the record is not overwritten on re-search."""
-    storage = tmp_path / "prices.json"
-    from core.storage import save_day
-    past_date = "2026-06-02"
-    save_day(storage, past_date, {"checked_at": "2026-06-01T10:00:00", "trains": []})
+def test_day_payload_records_history_when_price_rises():
+    previous = {
+        "checked_at": "2026-06-01T09:00:00",
+        "trains": [{"depart": "07:00", "arrive": "08:00",
+                    "price_pence": 1250, "is_advance": True}],
+    }
+    options = [TrainOption("07:00", "08:00", 1390, True, "/b")]
+    payload = day_payload(options, "2026-06-06T10:00:00", previous)
+    assert payload["price_history"] == [
+        {"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1250}
+    ]
 
-    cfg = _make_cfg(storage)
 
-    with patch("commands.search.load_config", return_value=cfg), \
-         patch("commands.search.TrainClient"), \
-         patch("commands.search.travel_dates", return_value=[dt.date(2026, 6, 2)]), \
-         patch("commands.search.dt") as mock_dt:
-        mock_dt.datetime.now.return_value.replace.return_value.isoformat.return_value = "2026-06-06T10:00:00"
-        mock_dt.date.today.return_value = dt.date(2026, 6, 6)
-        mock_dt.date.fromisoformat = dt.date.fromisoformat
+def test_day_payload_records_history_when_price_falls():
+    previous = {
+        "checked_at": "2026-06-01T09:00:00",
+        "trains": [{"depart": "07:00", "arrive": "08:00",
+                    "price_pence": 1390, "is_advance": True}],
+    }
+    options = [TrainOption("07:00", "08:00", 1250, True, "/b")]
+    payload = day_payload(options, "2026-06-06T10:00:00", previous)
+    assert payload["price_history"][0]["cheapest_pence"] == 1390
 
-        runner = CliRunner()
-        result = runner.invoke(search_command, ["2026-06-02"])
 
-    assert result.exit_code == 0
-    assert "frozen" in result.output
-    from core.storage import load_record
-    assert load_record(storage)[past_date]["checked_at"] == "2026-06-01T10:00:00"
+def test_day_payload_accumulates_history_across_lookups():
+    """History entries from previous record are preserved when price changes again."""
+    previous = {
+        "checked_at": "2026-06-03T09:00:00",
+        "trains": [{"depart": "07:00", "arrive": "08:00",
+                    "price_pence": 1390, "is_advance": True}],
+        "price_history": [{"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1250}],
+    }
+    options = [TrainOption("07:00", "08:00", 1490, True, "/b")]
+    payload = day_payload(options, "2026-06-06T10:00:00", previous)
+    assert len(payload["price_history"]) == 2
+    assert payload["price_history"][0]["cheapest_pence"] == 1250
+    assert payload["price_history"][1]["cheapest_pence"] == 1390
+
+
+def test_day_payload_no_previous_means_no_history():
+    options = [TrainOption("07:00", "08:00", 1250, True, "/b")]
+    payload = day_payload(options, "2026-06-06T10:00:00", previous=None)
+    assert "price_history" not in payload

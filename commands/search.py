@@ -1,7 +1,7 @@
 """Search command — four cheapest morning trains per travel day, in time order.
 
-Results are automatically saved to the local price record after each lookup.
-Past/today dates that are already recorded are not overwritten (frozen).
+Results are saved after every lookup. When the cheapest price changes from the
+previous lookup the old price is appended to price_history on that day's record.
 """
 
 import datetime as dt
@@ -32,16 +32,36 @@ def format_day(heading: str, options: list[TrainOption]) -> str:
     return "\n".join(lines)
 
 
-def day_payload(options: list[TrainOption], checked_at: str) -> dict:
-    """Build the JSON-serialisable record for one day."""
-    return {
-        "checked_at": checked_at,
-        "trains": [
-            {"depart": o.depart, "arrive": o.arrive,
-             "price_pence": o.price_pence, "is_advance": o.is_advance}
-            for o in options
-        ],
-    }
+def day_payload(options: list[TrainOption], checked_at: str,
+                previous: dict | None = None) -> dict:
+    """Build the JSON-serialisable record for one day.
+
+    If previous data exists and the cheapest price has changed, the old price
+    is appended to price_history so the movement can be displayed later.
+    """
+    trains = [
+        {"depart": o.depart, "arrive": o.arrive,
+         "price_pence": o.price_pence, "is_advance": o.is_advance}
+        for o in options
+    ]
+
+    history = list(previous.get("price_history", [])) if previous else []
+
+    if previous and options:
+        prev_trains = previous.get("trains", [])
+        if prev_trains:
+            prev_cheapest = min(prev_trains, key=lambda t: t["price_pence"])["price_pence"]
+            new_cheapest = min(options, key=lambda o: o.price_pence).price_pence
+            if prev_cheapest != new_cheapest:
+                history.append({
+                    "checked_at": previous["checked_at"],
+                    "cheapest_pence": prev_cheapest,
+                })
+
+    payload: dict = {"checked_at": checked_at, "trains": trains}
+    if history:
+        payload["price_history"] = history
+    return payload
 
 
 def lookup_day(client: TrainClient, cfg, date: dt.date) -> list[TrainOption]:
@@ -64,7 +84,6 @@ def search_command(week_date: str, days: str | None):
     day_names = [d.strip() for d in days.split(",")] if days else cfg.travel_days
     client = TrainClient(pause_seconds=cfg.request_pause_seconds)
     now = dt.datetime.now().replace(microsecond=0).isoformat()
-    today = dt.date.today()
     existing = load_record(cfg.storage_path)
 
     click.echo(f"{cfg.origin_name} → {cfg.destination_name}, "
@@ -74,14 +93,9 @@ def search_command(week_date: str, days: str | None):
     except ValueError as e:
         raise click.BadParameter(str(e))
     for date in dates:
-        if date <= today and date.isoformat() in existing:
-            click.echo(click.style(
-                f"Skipping {date.isoformat()} — already recorded (frozen)",
-                fg="bright_black",
-            ))
-            continue
         heading = f"{_WEEKDAYS[date.weekday()]} {date.isoformat()}"
         options = lookup_day(client, cfg, date)
         click.echo(format_day(heading, options))
-        save_day(cfg.storage_path, date.isoformat(), day_payload(options, now))
+        previous = existing.get(date.isoformat())
+        save_day(cfg.storage_path, date.isoformat(), day_payload(options, now, previous))
         click.echo()

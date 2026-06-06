@@ -23,9 +23,22 @@ def _week_monday(date_str: str) -> dt.date:
 
 
 def _fmt_checked(checked_at: str) -> str:
-    """Format a checked_at ISO datetime as 'DD Mon YYYY'."""
     d = dt.date.fromisoformat(checked_at[:10])
     return f"{d.day:02d} {_SHORT_MONTHS[d.month - 1]} {d.year}"
+
+
+def _price_change_suffix(day_data: dict, current_pence: int) -> str:
+    """Return a coloured suffix showing price movement, or '' if no history."""
+    history = day_data.get("price_history")
+    if not history:
+        return ""
+    prev = history[-1]
+    prev_pence = prev["cheapest_pence"]
+    diff = current_pence - prev_pence
+    since = _fmt_short(dt.date.fromisoformat(prev["checked_at"][:10]))
+    if diff > 0:
+        return click.style(f"  ↑£{diff / 100:.2f} since {since}", fg="red")
+    return click.style(f"  ↓£{abs(diff) / 100:.2f} since {since}", fg="green")
 
 
 def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date) -> list[str]:
@@ -59,9 +72,11 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
         if best:
             price_col = f"£{best['price_pence'] / 100:>6.2f}"
             kind_col = "Advance" if best["is_advance"] else "Anytime"
+            change = _price_change_suffix(day_data, best["price_pence"])
         else:
             price_col = " (no trains)"
             kind_col = ""
+            change = ""
 
         per_day_check = (
             click.style(f"   checked {_fmt_checked(day_data['checked_at'])}", fg="bright_black")
@@ -74,7 +89,7 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
         elif date == today:
             body = click.style(body, fg="yellow")
 
-        lines.append(body + per_day_check)
+        lines.append(body + per_day_check + change)
 
     return lines
 
@@ -86,7 +101,7 @@ def view_command():
     record = load_record(cfg.storage_path)
 
     if not record:
-        click.echo("No price data saved yet. Use `record` to save prices.")
+        click.echo("No price data saved yet. Use `search` to look up prices.")
         return
 
     today = dt.date.today()

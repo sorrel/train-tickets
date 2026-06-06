@@ -1,32 +1,27 @@
 import datetime as dt
 
-from commands.view import render_week, _week_monday, _fmt_short, _fmt_checked
+from commands.view import render_week, _week_monday, _fmt_short, _fmt_checked, _price_change_suffix
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _day(date_str: str, price_pence: int = 1250, is_advance: bool = True,
-         checked_at: str = "2026-06-06T10:00:00") -> dict:
-    return {
+         checked_at: str = "2026-06-06T10:00:00", price_history=None) -> dict:
+    d = {
         "checked_at": checked_at,
         "trains": [{"depart": "07:15", "arrive": "08:30",
                     "price_pence": price_pence, "is_advance": is_advance}],
     }
+    if price_history:
+        d["price_history"] = price_history
+    return d
 
 
 TODAY = dt.date(2026, 6, 6)
-FUTURE = dt.date(2026, 8, 12)  # a Wednesday
+FUTURE = dt.date(2026, 8, 12)
 MONDAY = FUTURE - dt.timedelta(days=FUTURE.weekday())
 
 
-# ---------------------------------------------------------------------------
-# Unit: helpers
-# ---------------------------------------------------------------------------
-
 def test_week_monday_returns_monday():
-    assert _week_monday("2026-08-12").weekday() == 0  # Wednesday → its Monday
+    assert _week_monday("2026-08-12").weekday() == 0
 
 
 def test_fmt_short():
@@ -37,9 +32,32 @@ def test_fmt_checked_formats_iso_datetime():
     assert _fmt_checked("2026-06-06T10:00:00") == "06 Jun 2026"
 
 
-# ---------------------------------------------------------------------------
-# render_week
-# ---------------------------------------------------------------------------
+def test_price_change_suffix_no_history():
+    assert _price_change_suffix({"trains": []}, 1250) == ""
+
+
+def test_price_change_suffix_rise():
+    day = {"price_history": [{"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1250}]}
+    suffix = _price_change_suffix(day, 1390)
+    assert "↑" in suffix and "1.40" in suffix and "01 Jun" in suffix
+
+
+def test_price_change_suffix_fall():
+    day = {"price_history": [{"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1390}]}
+    suffix = _price_change_suffix(day, 1250)
+    assert "↓" in suffix and "1.40" in suffix
+
+
+def test_price_change_suffix_uses_most_recent_history_entry():
+    """Only the last history entry is shown (most recent previous price)."""
+    day = {"price_history": [
+        {"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1100},
+        {"checked_at": "2026-06-03T09:00:00", "cheapest_pence": 1250},
+    ]}
+    suffix = _price_change_suffix(day, 1390)
+    assert "1.40" in suffix   # diff from 1250, not 1100
+    assert "03 Jun" in suffix
+
 
 def test_render_week_shows_week_header():
     record = {"2026-08-12": _day("2026-08-12")}
@@ -59,41 +77,43 @@ def test_render_week_shows_advance_label():
     assert any("Advance" in l for l in lines)
 
 
-def test_render_week_shows_anytime_label():
-    record = {"2026-08-12": _day("2026-08-12", is_advance=False)}
+def test_render_week_shows_price_rise():
+    history = [{"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1100}]
+    record = {"2026-08-12": _day("2026-08-12", price_pence=1250, price_history=history)}
     lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
-    assert any("Anytime" in l for l in lines)
+    assert any("↑" in l for l in lines)
+
+
+def test_render_week_shows_price_fall():
+    history = [{"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1390}]
+    record = {"2026-08-12": _day("2026-08-12", price_pence=1250, price_history=history)}
+    lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
+    assert any("↓" in l for l in lines)
 
 
 def test_render_week_uniform_checked_date_in_header():
-    """When all days in a week have the same checked_at date, it goes on the header."""
     record = {
         "2026-08-11": _day("2026-08-11", checked_at="2026-06-06T09:00:00"),
         "2026-08-12": _day("2026-08-12", checked_at="2026-06-06T09:05:00"),
     }
     monday = dt.date(2026, 8, 10)
     lines = render_week(monday, ["2026-08-11", "2026-08-12"], record, TODAY)
-    header = lines[0]
-    assert "checked" in header
-    # Per-day lines should NOT repeat the checked date
+    assert "checked" in lines[0]
     assert not any("checked" in l for l in lines[1:])
 
 
 def test_render_week_per_day_checked_when_dates_differ():
-    """When checked_at dates differ across days, each day line shows its own."""
     record = {
         "2026-08-11": _day("2026-08-11", checked_at="2026-06-01T09:00:00"),
         "2026-08-12": _day("2026-08-12", checked_at="2026-06-06T09:00:00"),
     }
     monday = dt.date(2026, 8, 10)
     lines = render_week(monday, ["2026-08-11", "2026-08-12"], record, TODAY)
-    day_lines = lines[1:]
-    assert all("checked" in l for l in day_lines)
+    assert all("checked" in l for l in lines[1:])
 
 
 def test_render_week_missing_date_shows_no_data():
-    record = {}
-    lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
+    lines = render_week(MONDAY, ["2026-08-12"], {}, TODAY)
     assert any("no data" in l for l in lines)
 
 
@@ -104,7 +124,6 @@ def test_render_week_no_trains_stored():
 
 
 def test_render_week_uses_cheapest_train():
-    """When multiple trains stored, the cheapest price is shown."""
     record = {"2026-08-12": {
         "checked_at": "2026-06-06T10:00:00",
         "trains": [
