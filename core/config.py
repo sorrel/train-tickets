@@ -26,4 +26,6 @@ class JourneyConfig:
 def load_config(path: Path) -> JourneyConfig:
     data = json.loads(Path(path).read_text())
     data["storage_path"] = Path(data["storage_path"]).expanduser()
+    if "show_cheapest" in data:
+        data["show_count"] = data.pop("show_cheapest")
     return JourneyConfig(**data)
