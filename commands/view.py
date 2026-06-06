@@ -5,7 +5,7 @@ import datetime as dt
 import click
 
 from core.config import load_config
-from core.storage import load_record
+from core.storage import load_record, META_KEY
 from commands.search import CONFIG_FILE
 
 _SHORT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -25,6 +25,36 @@ def _week_monday(date_str: str) -> dt.date:
 def _fmt_checked(checked_at: str) -> str:
     d = dt.date.fromisoformat(checked_at[:10])
     return f"{d.day:02d} {_SHORT_MONTHS[d.month - 1]} {d.year}"
+
+
+def _fmt_full(d: dt.date) -> str:
+    return f"{_SHORT_DAYS[d.weekday()]} {_fmt_short(d)} {d.year}"
+
+
+def horizon_note(record: dict) -> str | None:
+    """A note for the booking horizon — the earliest date with no trains found.
+
+    Drawn from the stored meta marker and from any legacy empty-train days still
+    in the record, whichever is earliest. Returns None when no horizon is known.
+    """
+    candidates: list[tuple[str, str]] = []
+    meta = record.get(META_KEY)
+    if meta and meta.get("no_trains_from"):
+        candidates.append((meta["no_trains_from"], meta["checked_at"]))
+    for date_str, day in record.items():
+        if date_str == META_KEY:
+            continue
+        if not day.get("trains"):
+            candidates.append((date_str, day["checked_at"]))
+    if not candidates:
+        return None
+    from_date, checked = min(candidates, key=lambda c: c[0])
+    date = dt.date.fromisoformat(from_date)
+    return click.style(
+        f"No trains on sale from {_fmt_full(date)} onwards yet "
+        f"(checked {_fmt_checked(checked)}).",
+        fg="bright_black",
+    )
 
 
 def _price_change_suffix(day_data: dict, current_pence: int) -> str:
@@ -154,16 +184,25 @@ def view_command(show_all: bool):
         return
 
     today = dt.date.today()
+    note = horizon_note(record)
 
     weeks: dict[dt.date, list[str]] = {}
     for date_str in sorted(record.keys()):
+        if date_str == META_KEY:
+            continue
+        if not record[date_str].get("trains"):
+            continue  # no-train days aren't shown — they're covered by the note
         if not show_all and dt.date.fromisoformat(date_str) <= today:
             continue
         monday = _week_monday(date_str)
         weeks.setdefault(monday, []).append(date_str)
 
     if not weeks:
-        click.echo("No future dates recorded. Use --all to see past dates.")
+        if note:
+            click.echo(f"{cfg.origin_name} → {cfg.destination_name}\n")
+            click.echo(note)
+        else:
+            click.echo("No future dates recorded. Use --all to see past dates.")
         return
 
     # Cheapest fare across everything on show, so the same low price is flagged
@@ -180,3 +219,6 @@ def view_command(show_all: bool):
                                 cheapest_price, flag_cheapest):
             click.echo(line)
         click.echo()
+
+    if note:
+        click.echo(note)

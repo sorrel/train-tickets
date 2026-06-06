@@ -13,7 +13,9 @@ from core.config import load_config
 from core.client import TrainClient
 from core.dates import travel_dates
 from core.fares import parse_plan, earliest_n, build_options, TrainOption
-from core.storage import load_record, save_day
+from core.storage import (
+    load_record, save_day, remove_day, write_meta, updated_horizon, META_KEY,
+)
 
 CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -98,10 +100,23 @@ def search_command(week_date: str, days: str | None):
         dates = travel_dates(week_date, day_names)
     except ValueError as e:
         raise click.BadParameter(str(e))
+
+    train_dates: list[str] = []
+    no_train_dates: list[str] = []
     for date in dates:
-        heading = f"{_WEEKDAYS[date.weekday()]} {date.isoformat()}"
+        ds = date.isoformat()
+        heading = f"{_WEEKDAYS[date.weekday()]} {ds}"
         options = lookup_day(client, cfg, date)
         click.echo(format_day(heading, options))
-        previous = existing.get(date.isoformat())
-        save_day(cfg.storage_path, date.isoformat(), day_payload(options, now, previous))
+        if options:
+            save_day(cfg.storage_path, ds, day_payload(options, now, existing.get(ds)))
+            train_dates.append(ds)
+        else:
+            # No trains means we are beyond the booking horizon — don't keep an
+            # empty day in history; record only the horizon marker (below).
+            remove_day(cfg.storage_path, ds)
+            no_train_dates.append(ds)
         click.echo()
+
+    meta = updated_horizon(existing.get(META_KEY), train_dates, no_train_dates, now)
+    write_meta(cfg.storage_path, meta)
