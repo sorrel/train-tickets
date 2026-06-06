@@ -12,7 +12,7 @@ import click
 from core.config import load_config
 from core.client import TrainClient
 from core.dates import travel_dates
-from core.fares import parse_plan, cheapest_n, build_options, TrainOption
+from core.fares import parse_plan, latest_n, build_options, TrainOption
 from core.storage import load_record, save_day
 
 CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
@@ -28,7 +28,7 @@ def format_day(heading: str, options: list[TrainOption]) -> str:
     for o in options:
         kind = "Advance" if o.is_advance else "Anytime"
         price = f"£{o.price_pence / 100:.2f}"
-        lines.append(f"  {o.depart} → {o.arrive}   {price:>8}   {kind}")
+        lines.append(f"  {o.depart}   {price:>8}   {kind}")
     return "\n".join(lines)
 
 
@@ -40,8 +40,7 @@ def day_payload(options: list[TrainOption], checked_at: str,
     is appended to price_history so the movement can be displayed later.
     """
     trains = [
-        {"depart": o.depart, "arrive": o.arrive,
-         "price_pence": o.price_pence, "is_advance": o.is_advance}
+        {"depart": o.depart, "price_pence": o.price_pence, "is_advance": o.is_advance}
         for o in options
     ]
 
@@ -71,7 +70,7 @@ def lookup_day(client: TrainClient, cfg, date: dt.date) -> list[TrainOption]:
     plan = client.plan_day(cfg.origin_nlc, cfg.destination_nlc, start, end)
     if not plan:
         return []
-    chosen = cheapest_n(parse_plan(plan), cfg.show_cheapest)
+    chosen = latest_n(parse_plan(plan), cfg.show_count)
     return build_options(chosen, fetch_detail=client.journey_detail)
 
 

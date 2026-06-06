@@ -18,7 +18,7 @@ class JourneyConfig:
     travel_days: list[str]
     window_start: str
     window_end: str
-    show_cheapest: int
+    show_count: int
     storage_path: Path
     request_pause_seconds: float
 

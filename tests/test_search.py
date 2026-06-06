@@ -18,6 +18,7 @@ def test_format_day_shows_trains_in_time_order():
     assert text.index("06:10") < text.index("06:40") < text.index("07:12")
     assert "£16.40" in text and "£24.90" in text
     assert "Anytime" in text and "Advance" in text
+    assert "→" not in text  # arrival times not shown
 
 
 def test_format_day_handles_no_trains():
@@ -29,14 +30,14 @@ def test_day_payload_serialises_trains():
     payload = day_payload(options, checked_at="2026-06-06T10:00:00")
     assert payload["checked_at"] == "2026-06-06T10:00:00"
     assert payload["trains"] == [
-        {"depart": "06:40", "arrive": "07:30", "price_pence": 1640, "is_advance": True}
+        {"depart": "06:40", "price_pence": 1640, "is_advance": True}
     ]
 
 
 def test_day_payload_no_history_when_price_unchanged():
     previous = {
         "checked_at": "2026-06-01T09:00:00",
-        "trains": [{"depart": "07:00", "arrive": "08:00",
+        "trains": [{"depart": "07:00",
                     "price_pence": 1640, "is_advance": True}],
     }
     options = [TrainOption("07:00", "08:00", 1640, True, "/b")]
@@ -47,7 +48,7 @@ def test_day_payload_no_history_when_price_unchanged():
 def test_day_payload_records_history_when_price_rises():
     previous = {
         "checked_at": "2026-06-01T09:00:00",
-        "trains": [{"depart": "07:00", "arrive": "08:00",
+        "trains": [{"depart": "07:00",
                     "price_pence": 1250, "is_advance": True}],
     }
     options = [TrainOption("07:00", "08:00", 1390, True, "/b")]
@@ -60,7 +61,7 @@ def test_day_payload_records_history_when_price_rises():
 def test_day_payload_records_history_when_price_falls():
     previous = {
         "checked_at": "2026-06-01T09:00:00",
-        "trains": [{"depart": "07:00", "arrive": "08:00",
+        "trains": [{"depart": "07:00",
                     "price_pence": 1390, "is_advance": True}],
     }
     options = [TrainOption("07:00", "08:00", 1250, True, "/b")]
@@ -72,7 +73,7 @@ def test_day_payload_accumulates_history_across_lookups():
     """History entries from previous record are preserved when price changes again."""
     previous = {
         "checked_at": "2026-06-03T09:00:00",
-        "trains": [{"depart": "07:00", "arrive": "08:00",
+        "trains": [{"depart": "07:00",
                     "price_pence": 1390, "is_advance": True}],
         "price_history": [{"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 1250}],
     }

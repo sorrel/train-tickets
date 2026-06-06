@@ -4,9 +4,9 @@
   "destination_nlc": "0000",
   "destination_name": "Destination station",
   "travel_days": ["Tue", "Wed", "Thu"],
-  "window_start": "06:00",
+  "window_start": "05:45",
   "window_end": "08:00",
-  "show_cheapest": 4,
+  "show_count": 5,
   "storage_path": "~/.train-tickets/prices.json",
   "request_pause_seconds": 1.0
 }

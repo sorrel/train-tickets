@@ -40,6 +40,15 @@ def cheapest_n(options: list[dict], n: int) -> list[dict]:
     return sorted(options, key=lambda o: o["price_pence"])[:n]
 
 
+def latest_n(options: list[dict], n: int) -> list[dict]:
+    """Return the n latest-departing options.
+
+    The journey-plan API returns journeys in time order, so the last n entries
+    are the latest departures within the search window.
+    """
+    return options[-n:] if len(options) >= n else list(options)
+
+
 def parse_times(detail: dict) -> tuple[str, str]:
     """Return (departure, arrival) as 'HH:MM' from a journey-detail response."""
     result = detail.get("result", detail)
