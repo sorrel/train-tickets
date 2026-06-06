@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
 from commands.view import (
-    render_week, view_command,
+    render_week, view_command, displayed_prices,
     _week_monday, _fmt_short, _fmt_checked, _price_change_suffix,
 )
 
@@ -160,80 +160,152 @@ def test_render_week_shows_only_one_train_when_only_one_stored():
 
 
 # ---------------------------------------------------------------------------
-# "cheaper" highlight — computed fresh, marks the cheapest day(s) of the week
+# "cheaper" highlight — marks every train at the cheapest fare on show
 # ---------------------------------------------------------------------------
 
 _WK_MONDAY = dt.date(2026, 8, 10)
 _TUE, _WED, _THU = "2026-08-11", "2026-08-12", "2026-08-13"
 
 
-def test_cheaper_marks_the_single_cheapest_day():
+def test_render_week_marks_global_cheapest_green():
     record = {
         _TUE: _day(_TUE, price_pence=1800),
-        _WED: _day(_WED, price_pence=1500),   # cheapest
+        _WED: _day(_WED, price_pence=1500),
         _THU: _day(_THU, price_pence=2100),
     }
-    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
-    cheaper = [l for l in lines if "cheaper" in l]
-    assert len(cheaper) == 1
-    assert "15.00" in cheaper[0]
+    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY,
+                        cheapest_price=1500, flag_cheapest=True)
+    cheapest = [l for l in lines if "cheapest" in l]
+    assert len(cheapest) == 1
+    assert "15.00" in cheapest[0]
 
 
-def test_cheaper_marks_all_days_tied_at_minimum():
+def test_render_week_marks_every_train_at_global_cheapest():
     record = {
-        _TUE: _day(_TUE, price_pence=1500),   # tie cheapest
-        _WED: _day(_WED, price_pence=1500),   # tie cheapest
+        _TUE: _day(_TUE, price_pence=1500),
+        _WED: _day(_WED, price_pence=1500),
         _THU: _day(_THU, price_pence=2100),
     }
-    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
-    assert len([l for l in lines if "cheaper" in l]) == 2
+    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY,
+                        cheapest_price=1500, flag_cheapest=True)
+    assert len([l for l in lines if "cheapest" in l]) == 2
 
 
-def test_cheaper_absent_when_all_days_same_price():
+def test_render_week_no_marks_when_flag_off_and_no_week_variation():
+    record = {_TUE: _day(_TUE, price_pence=1500)}
+    lines = render_week(_WK_MONDAY, [_TUE], record, TODAY,
+                        cheapest_price=1500, flag_cheapest=False)
+    assert not any("cheap" in l for l in lines)
+
+
+def test_render_week_marks_week_cheapest_yellow_when_above_global():
+    # Week low is 1490 (with a dearer 1800); the global low is 730 elsewhere,
+    # so this week's cheapest is "cheaper" (yellow), not "cheapest" (green).
     record = {
-        _TUE: _day(_TUE, price_pence=1800),
-        _WED: _day(_WED, price_pence=1800),
-        _THU: _day(_THU, price_pence=1800),
-    }
-    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
-    assert not any("cheaper" in l for l in lines)
-
-
-def test_cheaper_absent_for_lone_day():
-    record = {_WED: _day(_WED, price_pence=1500)}
-    lines = render_week(_WK_MONDAY, [_WED], record, TODAY)
-    assert not any("cheaper" in l for l in lines)
-
-
-def test_cheaper_marks_within_day_cheaper_train_even_when_days_match():
-    # Every day has the same pair (14.90 + 18.00). The cheaper 14.90 train on
-    # each day should be flagged, even though the days look identical.
-    def _pair(ds):
-        return {"checked_at": "2026-06-06T10:00:00", "trains": [
+        _TUE: {"checked_at": "2026-06-06T10:00:00", "trains": [
             {"depart": "05:46", "price_pence": 1490, "is_advance": True},
             {"depart": "06:05", "price_pence": 1800, "is_advance": True},
-        ]}
-    record = {_TUE: _pair(_TUE), _WED: _pair(_WED), _THU: _pair(_THU)}
-    lines = render_week(_WK_MONDAY, [_TUE, _WED, _THU], record, TODAY)
+        ]},
+    }
+    lines = render_week(_WK_MONDAY, [_TUE], record, TODAY,
+                        cheapest_price=730, flag_cheapest=True)
+    text = "\n".join(lines)
+    assert "← cheaper" in text and "← cheapest" not in text
     cheaper = [l for l in lines if "cheaper" in l]
-    assert len(cheaper) == 3
-    assert all("14.90" in l for l in cheaper)
+    assert "14.90" in cheaper[0]
 
 
-def test_cheaper_uses_day_cheapest_when_multiple_trains():
-    # Wednesday's cheapest train (1400) is the week minimum even though it also
-    # has a dearer train; the marker lands on Wednesday.
+def test_render_week_global_cheapest_takes_precedence_over_week_cheaper():
+    # The week's low IS the global low — it should be green "cheapest", not
+    # yellow "cheaper".
     record = {
-        _TUE: _day(_TUE, price_pence=1800),
-        _WED: {"checked_at": "2026-06-06T10:00:00", "trains": [
+        _TUE: {"checked_at": "2026-06-06T10:00:00", "trains": [
+            {"depart": "05:46", "price_pence": 730, "is_advance": True},
+            {"depart": "06:05", "price_pence": 1800, "is_advance": True},
+        ]},
+    }
+    lines = render_week(_WK_MONDAY, [_TUE], record, TODAY,
+                        cheapest_price=730, flag_cheapest=True)
+    text = "\n".join(lines)
+    assert "← cheapest" in text
+    assert "← cheaper\n" not in text and not text.rstrip().endswith("← cheaper")
+
+
+def test_displayed_prices_takes_cheapest_two_per_day():
+    record = {
+        _TUE: {"checked_at": "2026-06-06T10:00:00", "trains": [
+            {"depart": "07:00", "price_pence": 2100, "is_advance": False},
             {"depart": "07:15", "price_pence": 1400, "is_advance": True},
             {"depart": "07:45", "price_pence": 1900, "is_advance": True},
         ]},
     }
-    lines = render_week(_WK_MONDAY, [_TUE, _WED], record, TODAY)
-    cheaper = [l for l in lines if "cheaper" in l]
-    assert len(cheaper) == 1
-    assert "14.00" in cheaper[0]
+    assert sorted(displayed_prices(record, [_TUE])) == [1400, 1900]
+
+
+# --- the regression the user hit: global, not per-week ---------------------
+
+def test_cheapest_flags_uniform_low_week_against_a_dearer_week():
+    # Week A is uniformly £7.30 (730); week B has a dearer £18.00 train. The
+    # £7.30 trains are the global low, so every one is flagged green "cheapest".
+    cheap = {"checked_at": "2026-06-06T10:00:00",
+             "trains": [{"depart": "06:05", "price_pence": 730, "is_advance": True},
+                        {"depart": "06:13", "price_pence": 730, "is_advance": True}]}
+    dear = {"checked_at": "2026-06-06T10:00:00",
+            "trains": [{"depart": "06:05", "price_pence": 1800, "is_advance": True}]}
+    record = {
+        "2026-08-11": dict(cheap), "2026-08-12": dict(cheap), "2026-08-13": dict(cheap),
+        "2026-08-18": dict(dear),  # next week, dearer
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert result.output.count("cheapest") == 6  # 3 days × 2 trains
+    # The £18.00 train (its week's only price) is not flagged at all
+    dear_lines = [l for l in result.output.splitlines() if "18.00" in l]
+    assert dear_lines and not any("cheap" in l for l in dear_lines)
+
+
+def test_two_tiers_green_global_and_yellow_weekly():
+    # Week A: uniform £7.30 (global low → "cheapest"). Week B: £14.90 beside
+    # £18.00 (week low above global → "cheaper").
+    cheap = {"checked_at": "2026-06-06T10:00:00",
+             "trains": [{"depart": "06:05", "price_pence": 730, "is_advance": True}]}
+    mixed = {"checked_at": "2026-06-06T10:00:00",
+             "trains": [{"depart": "05:46", "price_pence": 1490, "is_advance": True},
+                        {"depart": "06:05", "price_pence": 1800, "is_advance": True}]}
+    record = {"2026-08-11": dict(cheap), "2026-08-18": dict(mixed)}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert result.output.count("← cheapest") == 1   # the £7.30
+    assert result.output.count("← cheaper") == 1     # the £14.90
+    cheaper_line = [l for l in result.output.splitlines() if "← cheaper" in l][0]
+    assert "14.90" in cheaper_line
+
+
+def test_cheap_markers_absent_when_everything_on_show_is_one_price():
+    same = {"checked_at": "2026-06-06T10:00:00",
+            "trains": [{"depart": "06:05", "price_pence": 1800, "is_advance": True}]}
+    record = {"2026-08-11": dict(same), "2026-08-18": dict(same)}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "cheap" not in result.output
+
+
+def test_cheapest_marker_coexists_with_price_change():
+    # A train that is both the global cheapest AND has fallen in price should
+    # show both the "↓ since" change and the "← cheapest" marker on one line.
+    record = {
+        "2026-08-11": {"checked_at": "2026-06-06T10:00:00",
+                       "trains": [{"depart": "06:05", "price_pence": 730, "is_advance": True}],
+                       "price_history": [{"checked_at": "2026-06-01T09:00:00",
+                                          "cheapest_pence": 900}]},
+        "2026-08-18": {"checked_at": "2026-06-06T10:00:00",
+                       "trains": [{"depart": "06:05", "price_pence": 1800, "is_advance": True}]},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    line = [l for l in result.output.splitlines() if "07.30" in l or "7.30" in l][0]
+    assert "↓" in line and "since" in line   # price-fall marker
+    assert "← cheapest" in line              # cheapest marker, same line
 
 
 # ---------------------------------------------------------------------------
@@ -286,3 +358,56 @@ def test_view_message_when_only_past_dates():
     result = _run_view(record, dt.date(2026, 6, 6))
     assert result.exit_code == 0
     assert "No future dates" in result.output
+
+
+# ---------------------------------------------------------------------------
+# horizon note — "no trains on sale from X onwards"
+# ---------------------------------------------------------------------------
+
+def test_view_shows_horizon_note_from_meta():
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "meta": {"no_trains_from": "2026-09-15", "checked_at": "2026-06-02T10:00:00"},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "No trains on sale from Tue 15 Sep 2026 onwards" in result.output
+    assert "checked 02 Jun 2026" in result.output
+
+
+def test_view_does_not_render_empty_days_as_rows():
+    # Legacy empty-train days are folded into the note, not shown as "(no trains)"
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "2026-09-15": {"checked_at": "2026-06-02T10:00:00", "trains": []},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "(no trains)" not in result.output
+    assert "No trains on sale from Tue 15 Sep 2026 onwards" in result.output
+
+
+def test_view_note_uses_earliest_of_meta_and_empty_days():
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "2026-09-22": {"checked_at": "2026-06-04T10:00:00", "trains": []},
+        "meta": {"no_trains_from": "2026-09-15", "checked_at": "2026-06-02T10:00:00"},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert "from Tue 15 Sep 2026" in result.output   # the earlier of the two
+    assert "22 Sep" not in result.output
+
+
+def test_view_no_note_when_no_horizon():
+    record = {"2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00")}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert "No trains on sale" not in result.output
+
+
+def test_view_meta_key_not_treated_as_a_day():
+    record = {
+        "2026-08-11": _day("2026-08-11", checked_at="2026-05-20T10:00:00"),
+        "meta": {"no_trains_from": "2026-09-15", "checked_at": "2026-06-02T10:00:00"},
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0   # would crash if "meta" were parsed as a date

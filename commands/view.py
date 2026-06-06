@@ -5,7 +5,7 @@ import datetime as dt
 import click
 
 from core.config import load_config
-from core.storage import load_record
+from core.storage import load_record, META_KEY
 from commands.search import CONFIG_FILE
 
 _SHORT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -25,6 +25,36 @@ def _week_monday(date_str: str) -> dt.date:
 def _fmt_checked(checked_at: str) -> str:
     d = dt.date.fromisoformat(checked_at[:10])
     return f"{d.day:02d} {_SHORT_MONTHS[d.month - 1]} {d.year}"
+
+
+def _fmt_full(d: dt.date) -> str:
+    return f"{_SHORT_DAYS[d.weekday()]} {_fmt_short(d)} {d.year}"
+
+
+def horizon_note(record: dict) -> str | None:
+    """A note for the booking horizon — the earliest date with no trains found.
+
+    Drawn from the stored meta marker and from any legacy empty-train days still
+    in the record, whichever is earliest. Returns None when no horizon is known.
+    """
+    candidates: list[tuple[str, str]] = []
+    meta = record.get(META_KEY)
+    if meta and meta.get("no_trains_from"):
+        candidates.append((meta["no_trains_from"], meta["checked_at"]))
+    for date_str, day in record.items():
+        if date_str == META_KEY:
+            continue
+        if not day.get("trains"):
+            candidates.append((date_str, day["checked_at"]))
+    if not candidates:
+        return None
+    from_date, checked = min(candidates, key=lambda c: c[0])
+    date = dt.date.fromisoformat(from_date)
+    return click.style(
+        f"No trains on sale from {_fmt_full(date)} onwards yet "
+        f"(checked {_fmt_checked(checked)}).",
+        fg="bright_black",
+    )
 
 
 def _price_change_suffix(day_data: dict, current_pence: int) -> str:
@@ -58,11 +88,20 @@ def _train_line(train: dict, change: str, date: dt.date, today: dt.date) -> str:
     return _date_colour(plain, date, today) + change
 
 
-def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date) -> list[str]:
+def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date,
+                cheapest_price: int | None = None, flag_cheapest: bool = False) -> list[str]:
     """Return display lines for one week (pure — no I/O, easy to test).
 
     Each day shows its two cheapest trains (cheapest first), labelled by
     departure time so it is clear which train each price belongs to.
+
+    Two highlights:
+    - "← cheapest" (green) — the cheapest fare across the *whole* view
+      (`cheapest_price`), flagged when `flag_cheapest` is set.
+    - "← cheaper" (yellow) — the cheapest fare within *this week*, flagged when
+      the week has a dearer train. A train that is the global cheapest takes
+      the green label, so yellow only ever marks a week whose own low sits
+      above the global low.
     """
     lines = []
 
@@ -78,17 +117,11 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
         )
     lines.append(click.style(week_header, fg="cyan", bold=True))
 
-    # Cheapest price among all the trains shown this week (the two per day).
-    # Used to flag the cheapest option(s); computed fresh, never stored, since
-    # it shifts as new prices arrive. Only meaningful when some train is dearer.
-    shown_prices = [
-        t["price_pence"]
-        for d in date_strs
-        if d in record
-        for t in sorted(record[d]["trains"], key=lambda t: t["price_pence"])[:2]
-    ]
-    week_min = min(shown_prices) if shown_prices else None
-    has_cheaper = bool(shown_prices) and max(shown_prices) > week_min
+    # Cheapest fare shown this week, and whether a dearer train sits alongside
+    # it — the basis for the per-week "← cheaper" (yellow) flag.
+    week_prices = displayed_prices(record, date_strs)
+    week_min = min(week_prices) if week_prices else None
+    week_has_dearer = bool(week_prices) and max(week_prices) > week_min
 
     for date_str in date_strs:
         date = dt.date.fromisoformat(date_str)
@@ -118,13 +151,24 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             # belongs on the cheapest train (the first line).
             change = _price_change_suffix(day_data, train["price_pence"]) if i == 0 else ""
             line = _train_line(train, change, date, today)
-            # Flag every train at the week's cheapest price — but only when a
-            # dearer train exists (nothing to be "cheaper" than otherwise).
-            if has_cheaper and train["price_pence"] == week_min:
-                line += click.style("  ← cheaper", fg="green", bold=True)
+            price = train["price_pence"]
+            if flag_cheapest and price == cheapest_price:
+                line += click.style("  ← cheapest", fg="green", bold=True)
+            elif week_has_dearer and price == week_min:
+                line += click.style("  ← cheaper", fg="yellow", bold=True)
             lines.append(line)
 
     return lines
+
+
+def displayed_prices(record: dict, date_strs: list[str]) -> list[int]:
+    """The prices actually shown (cheapest two per day) for the given dates."""
+    return [
+        t["price_pence"]
+        for d in date_strs
+        if d in record and record[d]["trains"]
+        for t in sorted(record[d]["trains"], key=lambda t: t["price_pence"])[:2]
+    ]
 
 
 @click.command("view")
@@ -140,21 +184,41 @@ def view_command(show_all: bool):
         return
 
     today = dt.date.today()
+    note = horizon_note(record)
 
     weeks: dict[dt.date, list[str]] = {}
     for date_str in sorted(record.keys()):
+        if date_str == META_KEY:
+            continue
+        if not record[date_str].get("trains"):
+            continue  # no-train days aren't shown — they're covered by the note
         if not show_all and dt.date.fromisoformat(date_str) <= today:
             continue
         monday = _week_monday(date_str)
         weeks.setdefault(monday, []).append(date_str)
 
     if not weeks:
-        click.echo("No future dates recorded. Use --all to see past dates.")
+        if note:
+            click.echo(f"{cfg.origin_name} → {cfg.destination_name}\n")
+            click.echo(note)
+        else:
+            click.echo("No future dates recorded. Use --all to see past dates.")
         return
+
+    # Cheapest fare across everything on show, so the same low price is flagged
+    # wherever it appears — even in a week that is uniformly priced at that low.
+    shown_dates = [d for date_strs in weeks.values() for d in date_strs]
+    prices = displayed_prices(record, shown_dates)
+    cheapest_price = min(prices) if prices else None
+    flag_cheapest = bool(prices) and max(prices) > cheapest_price
 
     click.echo(f"{cfg.origin_name} → {cfg.destination_name}\n")
 
     for monday, date_strs in sorted(weeks.items()):
-        for line in render_week(monday, date_strs, record, today):
+        for line in render_week(monday, date_strs, record, today,
+                                cheapest_price, flag_cheapest):
             click.echo(line)
         click.echo()
+
+    if note:
+        click.echo(note)
