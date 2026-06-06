@@ -8,7 +8,6 @@ import click
 
 from commands.setup import ColouredGroup, status_command
 from commands.search import search_command
-from commands.record import record_command
 from commands.view import view_command
 
 
@@ -20,7 +19,6 @@ def cli():
 
 cli.add_command(status_command)
 cli.add_command(search_command)
-cli.add_command(record_command)
 cli.add_command(view_command)
 
 
