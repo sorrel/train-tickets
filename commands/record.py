@@ -8,7 +8,7 @@ from core.config import load_config
 from core.client import TrainClient
 from core.dates import travel_dates
 from core.fares import TrainOption
-from core.storage import save_day
+from core.storage import load_record, save_day
 from commands.search import lookup_day, format_day, CONFIG_FILE, _WEEKDAYS
 
 
@@ -33,15 +33,26 @@ def record_command(week_date: str, days: str | None):
     day_names = [d.strip() for d in days.split(",")] if days else cfg.travel_days
     client = TrainClient(pause_seconds=cfg.request_pause_seconds)
     now = dt.datetime.now().replace(microsecond=0).isoformat()
+    today = dt.date.today()
+    existing = load_record(cfg.storage_path)
 
     try:
         dates = travel_dates(week_date, day_names)
     except ValueError as e:
         raise click.BadParameter(str(e))
+    saved_any = False
     for date in dates:
+        if date <= today and date.isoformat() in existing:
+            click.echo(click.style(
+                f"Skipping {date.isoformat()} — frozen (already recorded, date is past or today)",
+                fg="bright_black",
+            ))
+            continue
         heading = f"{_WEEKDAYS[date.weekday()]} {date.isoformat()}"
         options = lookup_day(client, cfg, date)
         click.echo(format_day(heading, options))
         save_day(cfg.storage_path, date.isoformat(), day_payload(options, now))
+        saved_any = True
         click.echo()
-    click.echo(click.style(f"Saved to {cfg.storage_path}", fg="green"))
+    if saved_any:
+        click.echo(click.style(f"Saved to {cfg.storage_path}", fg="green"))
