@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from core.fares import parse_plan, cheapest_n, latest_n, parse_times, build_options, TrainOption
+from core.fares import parse_plan, cheapest_n, earliest_n, parse_times, build_options, TrainOption
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -38,15 +38,15 @@ def test_is_advance_false_when_only_anytime():
     assert all(o["is_advance"] is False for o in anytime_only)
 
 
-def test_latest_n_returns_last_n_in_order():
+def test_earliest_n_returns_first_n_in_order():
     options = parse_plan(_plan())
-    last3 = latest_n(options, 3)
-    assert len(last3) == 3
-    assert last3 == options[-3:]
+    first3 = earliest_n(options, 3)
+    assert len(first3) == 3
+    assert first3 == options[:3]
 
 
-def test_latest_n_returns_all_when_fewer_than_n():
-    assert latest_n([{"journey_ref": "/a", "price_pence": 100, "is_advance": False}], 5) == \
+def test_earliest_n_returns_all_when_fewer_than_n():
+    assert earliest_n([{"journey_ref": "/a", "price_pence": 100, "is_advance": False}], 5) == \
            [{"journey_ref": "/a", "price_pence": 100, "is_advance": False}]
 
 

@@ -12,7 +12,7 @@ import click
 from core.config import load_config
 from core.client import TrainClient
 from core.dates import travel_dates
-from core.fares import parse_plan, latest_n, build_options, TrainOption
+from core.fares import parse_plan, earliest_n, build_options, TrainOption
 from core.storage import load_record, save_day
 
 CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
@@ -70,7 +70,7 @@ def lookup_day(client: TrainClient, cfg, date: dt.date) -> list[TrainOption]:
     plan = client.plan_day(cfg.origin_nlc, cfg.destination_nlc, start, end)
     if not plan:
         return []
-    chosen = latest_n(parse_plan(plan), cfg.show_count)
+    chosen = earliest_n(parse_plan(plan), cfg.show_count)
     return build_options(chosen, fetch_detail=client.journey_detail)
 
 
