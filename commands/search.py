@@ -64,14 +64,21 @@ def day_payload(options: list[TrainOption], checked_at: str,
 
 
 def lookup_day(client: TrainClient, cfg, date: dt.date) -> list[TrainOption]:
-    """Fetch and build the cheapest TrainOptions for one date (network)."""
+    """Fetch the earliest TrainOptions for one date (network).
+
+    The journey-plan response carries no departure times — only journey refs and
+    fares — so we fetch the detail (which has the times) for every journey it
+    returns, sort by departure, then keep the earliest few. Selecting before we
+    have times would slice the plan's own (non-temporal) order and miss early
+    trains. A morning window returns only a handful of journeys.
+    """
     start = f"{date.isoformat()}T{cfg.window_start}:00"
     end = f"{date.isoformat()}T{cfg.window_end}:00"
     plan = client.plan_day(cfg.origin_nlc, cfg.destination_nlc, start, end)
     if not plan:
         return []
-    chosen = earliest_n(parse_plan(plan), cfg.show_count)
-    return build_options(chosen, fetch_detail=client.journey_detail)
+    options = build_options(parse_plan(plan), fetch_detail=client.journey_detail)
+    return earliest_n(options, cfg.show_count)
 
 
 @click.command("search")

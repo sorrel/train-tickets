@@ -40,11 +40,12 @@ def cheapest_n(options: list[dict], n: int) -> list[dict]:
     return sorted(options, key=lambda o: o["price_pence"])[:n]
 
 
-def earliest_n(options: list[dict], n: int) -> list[dict]:
-    """Return the n earliest-departing options.
+def earliest_n(options: list, n: int) -> list:
+    """Return the first n options.
 
-    The journey-plan API returns journeys in time order, so the first n entries
-    are the earliest departures from the window start.
+    Call this on a list already sorted by departure (build_options sorts that
+    way), so the result is the n earliest departures. The journey-plan response
+    has no times, so ordering must come from the detail fetch, not the plan.
     """
     return options[:n]
 
