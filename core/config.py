@@ -21,6 +21,11 @@ class JourneyConfig:
     show_count: int
     storage_path: Path
     request_pause_seconds: float
+    # Randomised pause between weeks during refresh-price-data, in seconds.
+    # Kept deliberately slow and jittered so a long bulk run stays a polite
+    # ordinary customer rather than a burst of traffic.
+    refresh_pause_min_seconds: float = 10.0
+    refresh_pause_max_seconds: float = 30.0
 
 
 def load_config(path: Path) -> JourneyConfig:
