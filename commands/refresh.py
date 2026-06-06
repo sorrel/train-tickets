@@ -47,7 +47,8 @@ def refresh_price_data_command():
             now = dt.datetime.now().replace(microsecond=0).isoformat()
             existing = load_record(cfg.storage_path)
             # Only days from tomorrow onwards (the first week may be partly past).
-            dates = [d for d in travel_dates(week_date, cfg.travel_days) if d >= start]
+            week_days = travel_dates(week_date.isoformat(), cfg.travel_days)
+            dates = [d for d in week_days if d >= start]
             label = f"week of {week_date.isoformat()}"
 
             if not dates:
