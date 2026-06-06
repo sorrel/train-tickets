@@ -18,7 +18,9 @@ def test_format_day_shows_trains_in_time_order():
     assert text.index("06:10") < text.index("06:40") < text.index("07:12")
     assert "£16.40" in text and "£24.90" in text
     assert "Anytime" in text and "Advance" in text
-    assert "→" not in text  # arrival times not shown
+    # search display shows arrival too (07:01, 07:30, 08:03), even though
+    # storage keeps only the departure time
+    assert "07:01" in text and "08:03" in text
 
 
 def test_format_day_handles_no_trains():

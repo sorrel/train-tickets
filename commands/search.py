@@ -28,7 +28,7 @@ def format_day(heading: str, options: list[TrainOption]) -> str:
     for o in options:
         kind = "Advance" if o.is_advance else "Anytime"
         price = f"£{o.price_pence / 100:.2f}"
-        lines.append(f"  {o.depart}   {price:>8}   {kind}")
+        lines.append(f"  {o.depart} → {o.arrive}   {price:>8}   {kind}")
     return "\n".join(lines)
 
 
