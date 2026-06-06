@@ -11,3 +11,6 @@ dist/
 
 # Local planning docs — never committed
 docs/
+
+# Personal route config — never committed
+config.local.json

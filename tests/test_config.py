@@ -3,15 +3,15 @@ from pathlib import Path
 from core.config import load_config, JourneyConfig
 
 
-def test_load_config_reads_committed_file():
-    cfg = load_config(Path(__file__).parent.parent / "tunbridge-wells.local")
+def test_load_config_reads_committed_example():
+    cfg = load_config(Path(__file__).parent.parent / "config.example.json")
     assert isinstance(cfg, JourneyConfig)
-    assert cfg.origin_nlc == "5230"
-    assert cfg.destination_nlc == "1072"
+    assert cfg.origin_name == "Origin station"
+    assert cfg.destination_name == "Destination station"
     assert cfg.travel_days == ["Tue", "Wed", "Thu"]
     assert cfg.show_cheapest == 4
-    assert cfg.window_start == "05:44"
-    assert cfg.window_end == "07:45"
+    assert cfg.window_start == "06:00"
+    assert cfg.window_end == "08:00"
 
 
 def test_storage_path_is_expanded(tmp_path):

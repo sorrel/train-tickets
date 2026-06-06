@@ -10,7 +10,7 @@ from core.client import TrainClient
 from core.dates import travel_dates
 from core.fares import parse_plan, cheapest_n, build_options, TrainOption
 
-CONFIG_FILE = Path(__file__).parent.parent / "tunbridge-wells.local"
+CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 

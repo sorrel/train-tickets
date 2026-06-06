@@ -1,10 +1,10 @@
 # 🚂 Train Tickets
 
-A Python CLI tool for looking up UK train advance ticket prices on a fixed commuter route.
+A Python CLI tool for looking up UK train advance ticket prices on a commuter route you configure.
 
 ## Commands
 
-Given any date, the tool finds that date's week (Mon–Sun) and reports the four cheapest morning trains (Tunbridge Wells → London Terminals, 05:44–07:45) on the configured travel days (Tue/Wed/Thu by default, overridable with `--days`).
+Given any date, the tool finds that date's week (Mon–Sun) and reports the four cheapest morning trains on your configured route and time window, on the configured travel days (Tue/Wed/Thu by default, overridable with `--days`).
 
 | Command | Description |
 |---------|-------------|
@@ -30,7 +30,14 @@ The `record` command saves results to a local JSON file (`~/.train-tickets/price
 
 ## Configuration
 
-Non-private settings (station codes, travel days, time window) live in `tunbridge-wells.local` and are committed to the repository. The storage path points outside the repo and is expanded at runtime.
+Copy `config.example.json` to `config.local.json` and set your own route (station NLC codes and names), travel days, and time window:
+
+```bash
+cp config.example.json config.local.json
+# then edit config.local.json
+```
+
+`config.local.json` is gitignored — your personal route never leaves your machine. The storage path points outside the repo and is expanded at runtime.
 
 ## Development
 
@@ -38,6 +45,6 @@ Non-private settings (station codes, travel days, time window) live in `tunbridg
 # Install dependencies
 uv sync
 
-# Run tests (27 tests, all HTTP mocked)
+# Run tests (all HTTP mocked)
 uv run python -m pytest -v
 ```
