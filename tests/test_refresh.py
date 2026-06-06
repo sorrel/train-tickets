@@ -5,6 +5,8 @@ from click.testing import CliRunner
 
 from commands.refresh import refresh_price_data_command
 
+# Real-calendar anchors (2026): 08 Jun is a Monday, so 09/10/11 Jun are Tue/Wed/Thu.
+
 
 def _cfg():
     cfg = MagicMock()
@@ -17,13 +19,13 @@ def _cfg():
     return cfg
 
 
-def _run(fake_gather, travel=lambda wd, days: [wd], today=dt.date(2026, 6, 6)):
+def _run(fake_gather, today):
+    """Invoke refresh with the REAL travel_dates (pure) and network/sleeps mocked."""
     sleep_mock = MagicMock()
     with patch("commands.refresh.load_config", return_value=_cfg()), \
          patch("commands.refresh.TrainClient"), \
          patch("commands.refresh.load_record", return_value={}), \
          patch("commands.refresh.gather_week", side_effect=fake_gather), \
-         patch("commands.refresh.travel_dates", side_effect=travel), \
          patch("commands.refresh.time.sleep", sleep_mock), \
          patch("commands.refresh.random.uniform", return_value=0.0), \
          patch("commands.refresh.dt") as mdt:
@@ -34,30 +36,29 @@ def _run(fake_gather, travel=lambda wd, days: [wd], today=dt.date(2026, 6, 6)):
     return result, sleep_mock
 
 
-def test_refresh_starts_tomorrow_and_walks_weeks_until_no_trains():
+def _capture_first_dates():
     seen = []
 
     def fake_gather(client, cfg, dates, now, existing, on_day=None):
         seen.append(dates[0])
-        return len(seen) < 3   # True, True, then False → stop
+        return len(seen) < 3   # True, True, then False → stop after three weeks
 
-    result, sleep_mock = _run(fake_gather)
+    return seen, fake_gather
+
+
+def test_refresh_walks_real_travel_weeks_until_no_trains():
+    # Tomorrow (08 Jun, Mon) → first travel day 09 Jun (Tue), then +7 each week.
+    seen, fake_gather = _capture_first_dates()
+    result, _ = _run(fake_gather, today=dt.date(2026, 6, 7))
     assert result.exit_code == 0
-    # First day is tomorrow (today + 1), then advancing by 7 days a week
-    assert seen == [dt.date(2026, 6, 7), dt.date(2026, 6, 14), dt.date(2026, 6, 21)]
+    assert seen == [dt.date(2026, 6, 9), dt.date(2026, 6, 16), dt.date(2026, 6, 23)]
 
 
 def test_refresh_pauses_between_weeks_but_not_after_the_last():
-    seen = []
-
-    def fake_gather(client, cfg, dates, now, existing, on_day=None):
-        seen.append(dates[0])
-        return len(seen) < 3
-
-    result, sleep_mock = _run(fake_gather)
+    seen, fake_gather = _capture_first_dates()
+    result, sleep_mock = _run(fake_gather, today=dt.date(2026, 6, 7))
     assert result.exit_code == 0
-    # Three weeks gathered → two inter-week pauses (none after the final week)
-    assert sleep_mock.call_count == 2
+    assert sleep_mock.call_count == 2   # three weeks → two inter-week pauses
 
 
 def test_refresh_stops_immediately_when_first_week_has_no_trains():
@@ -67,36 +68,31 @@ def test_refresh_stops_immediately_when_first_week_has_no_trains():
         calls.append(dates[0])
         return False
 
-    result, sleep_mock = _run(fake_gather)
+    result, sleep_mock = _run(fake_gather, today=dt.date(2026, 6, 7))
     assert result.exit_code == 0
-    assert len(calls) == 1
+    assert calls == [dt.date(2026, 6, 9)]
     assert sleep_mock.call_count == 0
 
 
-def test_refresh_skips_a_week_with_no_qualifying_dates():
-    # First week's travel days are all before "tomorrow" → filtered to empty,
-    # so that week is skipped without a gather; the next week proceeds.
-    gathered = []
-
-    def travel(wd, days):
-        if wd == dt.date(2026, 6, 7):          # the first week_date (tomorrow)
-            return [dt.date(2026, 6, 1)]        # a past date → filtered out
-        return [wd]
+def test_refresh_skips_first_week_when_its_travel_days_are_past():
+    # Today 06 Jun (Sat) → tomorrow 07 Jun (Sun). The week containing the 7th
+    # (Mon 01 Jun) has Tue/Wed/Thu on 02/03/04 Jun, all before the 7th, so that
+    # week is skipped; gathering starts the following week (09 Jun).
+    calls = []
 
     def fake_gather(client, cfg, dates, now, existing, on_day=None):
-        gathered.append(dates[0])
-        return False                            # stop after the first real gather
+        calls.append(dates[0])
+        return False
 
-    result, _ = _run(fake_gather, travel=travel)
+    result, _ = _run(fake_gather, today=dt.date(2026, 6, 6))
     assert result.exit_code == 0
-    # The empty first week was skipped; gathering began the following week
-    assert gathered == [dt.date(2026, 6, 14)]
+    assert calls == [dt.date(2026, 6, 9)]
 
 
 def test_refresh_reports_completion():
     def fake_gather(client, cfg, dates, now, existing, on_day=None):
         return False
 
-    result, _ = _run(fake_gather)
+    result, _ = _run(fake_gather, today=dt.date(2026, 6, 7))
     assert "Done" in result.output
     assert "no trains were returned" in result.output
