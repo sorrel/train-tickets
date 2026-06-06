@@ -58,11 +58,16 @@ def _train_line(train: dict, change: str, date: dt.date, today: dt.date) -> str:
     return _date_colour(plain, date, today) + change
 
 
-def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date) -> list[str]:
+def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date,
+                cheapest_price: int | None = None, flag_cheaper: bool = False) -> list[str]:
     """Return display lines for one week (pure — no I/O, easy to test).
 
     Each day shows its two cheapest trains (cheapest first), labelled by
     departure time so it is clear which train each price belongs to.
+
+    `cheapest_price` is the cheapest fare across the *whole* view; when
+    `flag_cheaper` is set, every train at that price is marked "← cheaper", so
+    a week priced uniformly at the global low is still flagged.
     """
     lines = []
 
@@ -77,18 +82,6 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             fg="bright_black",
         )
     lines.append(click.style(week_header, fg="cyan", bold=True))
-
-    # Cheapest price among all the trains shown this week (the two per day).
-    # Used to flag the cheapest option(s); computed fresh, never stored, since
-    # it shifts as new prices arrive. Only meaningful when some train is dearer.
-    shown_prices = [
-        t["price_pence"]
-        for d in date_strs
-        if d in record
-        for t in sorted(record[d]["trains"], key=lambda t: t["price_pence"])[:2]
-    ]
-    week_min = min(shown_prices) if shown_prices else None
-    has_cheaper = bool(shown_prices) and max(shown_prices) > week_min
 
     for date_str in date_strs:
         date = dt.date.fromisoformat(date_str)
@@ -118,13 +111,25 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
             # belongs on the cheapest train (the first line).
             change = _price_change_suffix(day_data, train["price_pence"]) if i == 0 else ""
             line = _train_line(train, change, date, today)
-            # Flag every train at the week's cheapest price — but only when a
-            # dearer train exists (nothing to be "cheaper" than otherwise).
-            if has_cheaper and train["price_pence"] == week_min:
+            # Flag every train at the cheapest fare in the whole view, as long
+            # as a dearer train exists somewhere (nothing to be cheaper than
+            # otherwise). Comparing across the view — not within the week — means
+            # a week priced uniformly at the global low still gets flagged.
+            if flag_cheaper and train["price_pence"] == cheapest_price:
                 line += click.style("  ← cheaper", fg="green", bold=True)
             lines.append(line)
 
     return lines
+
+
+def displayed_prices(record: dict, date_strs: list[str]) -> list[int]:
+    """The prices actually shown (cheapest two per day) for the given dates."""
+    return [
+        t["price_pence"]
+        for d in date_strs
+        if d in record and record[d]["trains"]
+        for t in sorted(record[d]["trains"], key=lambda t: t["price_pence"])[:2]
+    ]
 
 
 @click.command("view")
@@ -152,9 +157,17 @@ def view_command(show_all: bool):
         click.echo("No future dates recorded. Use --all to see past dates.")
         return
 
+    # Cheapest fare across everything on show, so the same low price is flagged
+    # wherever it appears — even in a week that is uniformly priced at that low.
+    shown_dates = [d for date_strs in weeks.values() for d in date_strs]
+    prices = displayed_prices(record, shown_dates)
+    cheapest_price = min(prices) if prices else None
+    flag_cheaper = bool(prices) and max(prices) > cheapest_price
+
     click.echo(f"{cfg.origin_name} → {cfg.destination_name}\n")
 
     for monday, date_strs in sorted(weeks.items()):
-        for line in render_week(monday, date_strs, record, today):
+        for line in render_week(monday, date_strs, record, today,
+                                cheapest_price, flag_cheaper):
             click.echo(line)
         click.echo()
