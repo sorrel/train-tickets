@@ -37,6 +37,12 @@ class ColouredGroup(click.Group):
 
 @click.command("status")
 def status_command():
-    """Show connection status and configuration."""
+    """Show configuration and where the local record lives."""
+    from core.config import load_config
+    from commands.search import CONFIG_FILE
+    cfg = load_config(CONFIG_FILE)
     click.echo(click.style("Train Tickets CLI", fg="green"))
-    click.echo("  Status: ready (no authentication required)")
+    click.echo(f"  Route:        {cfg.origin_name} → {cfg.destination_name}")
+    click.echo(f"  Window:       {cfg.window_start}–{cfg.window_end}")
+    click.echo(f"  Travel days:  {', '.join(cfg.travel_days)}")
+    click.echo(f"  Record:       {cfg.storage_path}")

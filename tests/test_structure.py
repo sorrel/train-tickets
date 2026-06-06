@@ -28,3 +28,8 @@ def test_search_command_registered():
 def test_status_command_registered():
     from tickets import cli
     assert "status" in cli.commands
+
+
+def test_record_command_registered():
+    from tickets import cli
+    assert "record" in cli.commands
