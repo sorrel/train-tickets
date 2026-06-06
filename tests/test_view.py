@@ -1,6 +1,12 @@
 import datetime as dt
+from unittest.mock import patch, MagicMock
 
-from commands.view import render_week, _week_monday, _fmt_short, _fmt_checked, _price_change_suffix
+from click.testing import CliRunner
+
+from commands.view import (
+    render_week, view_command,
+    _week_monday, _fmt_short, _fmt_checked, _price_change_suffix,
+)
 
 
 def _day(date_str: str, price_pence: int = 1250, is_advance: bool = True,
@@ -151,3 +157,55 @@ def test_render_week_shows_only_one_train_when_only_one_stored():
     # One header line + one train line (plus the week header)
     train_lines = [l for l in lines if "£" in l]
     assert len(train_lines) == 1
+
+
+# ---------------------------------------------------------------------------
+# view_command — future-only by default, --all to include past/today
+# ---------------------------------------------------------------------------
+
+def _run_view(record: dict, today: dt.date, args=None):
+    cfg = MagicMock()
+    cfg.storage_path = "/tmp/unused.json"
+    cfg.origin_name = "Origin"
+    cfg.destination_name = "Dest"
+    with patch("commands.view.load_config", return_value=cfg), \
+         patch("commands.view.load_record", return_value=record), \
+         patch("commands.view.dt") as mock_dt:
+        mock_dt.date.today.return_value = today
+        mock_dt.date.fromisoformat = dt.date.fromisoformat
+        mock_dt.timedelta = dt.timedelta
+        return CliRunner().invoke(view_command, args or [])
+
+
+def test_view_hides_past_and_today_by_default():
+    # checked_at deliberately not in June, so it can't be confused with a day row
+    record = {
+        "2026-06-01": _day("2026-06-01", checked_at="2026-05-20T10:00:00"),  # past
+        "2026-06-06": _day("2026-06-06", checked_at="2026-05-20T10:00:00"),  # today
+        "2026-06-10": _day("2026-06-10", checked_at="2026-05-20T10:00:00"),  # future
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "10 Jun" in result.output      # future shown
+    assert "01 Jun" not in result.output  # past hidden
+    assert "06 Jun" not in result.output  # today hidden
+
+
+def test_view_all_shows_everything():
+    record = {
+        "2026-06-01": _day("2026-06-01"),
+        "2026-06-06": _day("2026-06-06"),
+        "2026-06-10": _day("2026-06-10"),
+    }
+    result = _run_view(record, dt.date(2026, 6, 6), ["--all"])
+    assert result.exit_code == 0
+    assert "01 Jun" in result.output
+    assert "06 Jun" in result.output
+    assert "10 Jun" in result.output
+
+
+def test_view_message_when_only_past_dates():
+    record = {"2026-06-01": _day("2026-06-01")}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "No future dates" in result.output

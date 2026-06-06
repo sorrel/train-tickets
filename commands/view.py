@@ -111,8 +111,10 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
 
 
 @click.command("view")
-def view_command():
-    """Display saved price records grouped by week."""
+@click.option("--all", "-a", "show_all", is_flag=True,
+              help="Show past and today's dates too (default: future only).")
+def view_command(show_all: bool):
+    """Display saved price records grouped by week (future dates by default)."""
     cfg = load_config(CONFIG_FILE)
     record = load_record(cfg.storage_path)
 
@@ -124,8 +126,14 @@ def view_command():
 
     weeks: dict[dt.date, list[str]] = {}
     for date_str in sorted(record.keys()):
+        if not show_all and dt.date.fromisoformat(date_str) <= today:
+            continue
         monday = _week_monday(date_str)
         weeks.setdefault(monday, []).append(date_str)
+
+    if not weeks:
+        click.echo("No future dates recorded. Use --all to see past dates.")
+        return
 
     click.echo(f"{cfg.origin_name} → {cfg.destination_name}\n")
 
