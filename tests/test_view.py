@@ -109,7 +109,8 @@ def test_render_week_per_day_checked_when_dates_differ():
     }
     monday = dt.date(2026, 8, 10)
     lines = render_week(monday, ["2026-08-11", "2026-08-12"], record, TODAY)
-    assert all("checked" in l for l in lines[1:])
+    # Each day's header carries its own checked date (two days, two markers)
+    assert len([l for l in lines if "checked" in l]) == 2
 
 
 def test_render_week_missing_date_shows_no_data():
@@ -123,14 +124,30 @@ def test_render_week_no_trains_stored():
     assert any("no trains" in l for l in lines)
 
 
-def test_render_week_uses_cheapest_train():
+def test_render_week_shows_cheapest_two_trains():
     record = {"2026-08-12": {
         "checked_at": "2026-06-06T10:00:00",
         "trains": [
-            {"depart": "07:00", "arrive": "08:00", "price_pence": 2490, "is_advance": False},
-            {"depart": "07:30", "arrive": "08:30", "price_pence": 1250, "is_advance": True},
+            {"depart": "07:00", "price_pence": 2490, "is_advance": False},
+            {"depart": "07:30", "price_pence": 1250, "is_advance": True},
+            {"depart": "07:45", "price_pence": 1890, "is_advance": True},
         ],
     }}
     lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
-    assert any("12.50" in l for l in lines)
-    assert not any("24.90" in l for l in lines)
+    text = "\n".join(lines)
+    # The two cheapest are shown; the most expensive (24.90) is dropped
+    assert "12.50" in text and "18.90" in text
+    assert "24.90" not in text
+    # Departure times make clear which train is which
+    assert "07:30" in text and "07:45" in text
+    assert "07:00" not in text
+    # Cheapest is listed first
+    assert text.index("12.50") < text.index("18.90")
+
+
+def test_render_week_shows_only_one_train_when_only_one_stored():
+    record = {"2026-08-12": _day("2026-08-12", price_pence=1250)}
+    lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
+    # One header line + one train line (plus the week header)
+    train_lines = [l for l in lines if "£" in l]
+    assert len(train_lines) == 1

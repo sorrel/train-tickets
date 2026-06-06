@@ -41,8 +41,29 @@ def _price_change_suffix(day_data: dict, current_pence: int) -> str:
     return click.style(f"  ↓£{abs(diff) / 100:.2f} since {since}", fg="green")
 
 
+def _date_colour(text: str, date: dt.date, today: dt.date) -> str:
+    """Dim past dates, highlight today, leave future dates plain."""
+    if date < today:
+        return click.style(text, fg="bright_black")
+    if date == today:
+        return click.style(text, fg="yellow")
+    return text
+
+
+def _train_line(train: dict, change: str, date: dt.date, today: dt.date) -> str:
+    """Render one train as an indented line (departure, price, fare type)."""
+    price_col = f"£{train['price_pence'] / 100:>6.2f}"
+    kind_col = "Advance" if train["is_advance"] else "Anytime"
+    plain = f"    {train['depart']}   {price_col}   {kind_col}"
+    return _date_colour(plain, date, today) + change
+
+
 def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.date) -> list[str]:
-    """Return display lines for one week (pure — no I/O, easy to test)."""
+    """Return display lines for one week (pure — no I/O, easy to test).
+
+    Each day shows its two cheapest trains (cheapest first), labelled by
+    departure time so it is clear which train each price belongs to.
+    """
     lines = []
 
     present = [d for d in date_strs if d in record]
@@ -67,29 +88,24 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
 
         day_data = record[date_str]
         trains = day_data["trains"]
-        best = min(trains, key=lambda t: t["price_pence"]) if trains else None
-
-        if best:
-            price_col = f"£{best['price_pence'] / 100:>6.2f}"
-            kind_col = "Advance" if best["is_advance"] else "Anytime"
-            change = _price_change_suffix(day_data, best["price_pence"])
-        else:
-            price_col = " (no trains)"
-            kind_col = ""
-            change = ""
 
         per_day_check = (
             click.style(f"   checked {_fmt_checked(day_data['checked_at'])}", fg="bright_black")
             if not uniform_check else ""
         )
+        header = _date_colour(f"  {day_name} {_fmt_short(date)}", date, today)
+        lines.append(header + per_day_check)
 
-        body = f"  {day_name} {_fmt_short(date)}   {price_col}   {kind_col}"
-        if date < today:
-            body = click.style(body, fg="bright_black")
-        elif date == today:
-            body = click.style(body, fg="yellow")
+        if not trains:
+            lines.append(_date_colour("    (no trains)", date, today))
+            continue
 
-        lines.append(body + per_day_check + change)
+        cheapest = sorted(trains, key=lambda t: t["price_pence"])[:2]
+        for i, train in enumerate(cheapest):
+            # Price history tracks the day's cheapest, so the movement marker
+            # belongs on the cheapest train (the first line).
+            change = _price_change_suffix(day_data, train["price_pence"]) if i == 0 else ""
+            lines.append(_train_line(train, change, date, today))
 
     return lines
 
