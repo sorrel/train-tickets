@@ -60,8 +60,9 @@ def updated_horizon(current: dict | None, train_dates: list[str],
     `current` is the existing {"no_trains_from", "checked_at"} marker or None.
     `train_dates` / `no_train_dates` are ISO date strings seen this run. Returns
     the new marker, or None when no horizon is known. The checked_at date is
-    kept from `current` while the horizon is unchanged, so it records when the
-    horizon was first discovered, not every re-check.
+    refreshed whenever this run actually re-checked the horizon date itself (it
+    sits among today's no-train dates); checking only weeks further ahead leaves
+    an unchanged horizon's original discovery date untouched.
     """
     horizon = current["no_trains_from"] if current else None
     # Trains now exist at or after the old horizon → it has moved on.
@@ -72,6 +73,8 @@ def updated_horizon(current: dict | None, train_dates: list[str],
     if not candidates:
         return None
     new_horizon = min(candidates)
-    if current and current.get("no_trains_from") == new_horizon:
-        return {"no_trains_from": new_horizon, "checked_at": current["checked_at"]}
-    return {"no_trains_from": new_horizon, "checked_at": checked_at}
+    # The boundary date was re-confirmed this run iff it appears in today's
+    # no-train dates — then refresh the timestamp; otherwise keep the original.
+    if new_horizon in no_train_dates:
+        return {"no_trains_from": new_horizon, "checked_at": checked_at}
+    return {"no_trains_from": new_horizon, "checked_at": current["checked_at"]}

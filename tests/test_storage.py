@@ -58,11 +58,19 @@ def test_horizon_none_when_all_dates_have_trains():
     assert updated_horizon(None, ["2026-08-12"], [], "2026-06-06T10:00:00") is None
 
 
-def test_horizon_keeps_earliest_and_original_checked_date():
+def test_horizon_refreshes_check_date_when_boundary_week_rechecked():
     current = {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
-    # A later re-check still finds no trains from the same date — keep the
-    # original discovery date, not the new check.
+    # Re-checking the boundary week itself still finds no trains — the horizon
+    # is unchanged, but we have freshly confirmed it, so the check date updates.
     meta = updated_horizon(current, [], ["2026-09-15"], "2026-06-06T10:00:00")
+    assert meta == {"no_trains_from": "2026-09-15", "checked_at": "2026-06-06T10:00:00"}
+
+
+def test_horizon_keeps_check_date_when_only_further_weeks_checked():
+    current = {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
+    # A week further ahead than the horizon is checked (still no trains). The
+    # boundary date itself was not re-checked, so its discovery date stands.
+    meta = updated_horizon(current, [], ["2026-10-06"], "2026-06-06T10:00:00")
     assert meta == {"no_trains_from": "2026-09-15", "checked_at": "2026-06-01T09:00:00"}
 
 
