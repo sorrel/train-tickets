@@ -6,6 +6,8 @@ A Python CLI tool for looking up UK train advance ticket prices on a commuter ro
 
 **Main purpose:** Query a train pricing API and present journey options and fares clearly in the terminal. Given any date, find that week's cheapest advance fares on the configured travel days.
 
+Two directions are supported. The **morning** (home → London) is the default. The **evening** return (London → home) is opt-in via `--evening` on `search` and `refresh-price-data`. `view` always shows both directions when data exists for a day. A `Direction` (`core/directions.py`) bundles each direction's route, time window, and record keys; the evening route is simply the morning's stations swapped.
+
 ## Running Commands
 
 ```bash
@@ -13,9 +15,11 @@ uv run python tickets.py <command>
 
 # Examples
 uv run python tickets.py status
-uv run python tickets.py search 2026-08-15            # one week, saved as it goes
-uv run python tickets.py view                          # browse saved fares by week
-uv run python tickets.py refresh-price-data            # slow bulk walk, all future weeks
+uv run python tickets.py search 2026-08-15            # one week (morning), saved as it goes
+uv run python tickets.py search 2026-08-15 --evening  # the evening return for that week
+uv run python tickets.py view                          # browse saved fares by week (both directions)
+uv run python tickets.py refresh-price-data            # slow bulk walk, all future weeks (morning)
+uv run python tickets.py refresh-price-data --evening  # the same bulk walk for the evening return
 ```
 
 ## Architecture
@@ -25,6 +29,7 @@ tickets.py                  CLI entry point — registers all commands
 core/
   config.py                 Load config.local.json → JourneyConfig dataclass
   dates.py                  Week calculation (Mon–Sun for a given date)
+  directions.py             Direction (morning/evening): route, window, record keys
   fares.py                  Parse raw API responses into fare summaries
   client.py                 TrainClient — all HTTP requests, token caching
   storage.py                Read/write local JSON price record
@@ -48,6 +53,7 @@ not a second copy of the gathering logic.
 - **Journey detail:** `GET {API_BASE}{journey_ref}` — returns times for one journey. Envelope: `{result, links}`. Times: `result.origin.time.scheduledTime` and `result.destination.time.scheduledTime` (ISO format).
 - **Auth:** single header `x-access-token`. The value is a public token scraped from the booking-page HTML (`"apiAccessToken":"..."` regex). Cached in memory; dropped and re-scraped on 401/403. The token-page URL uses a date ~30 days ahead so it never goes stale.
 - **Advance vs Anytime:** prices are in pence. A journey with more than one single fare has an Advance fare below the £24.90 Anytime ceiling; a journey with a single lone fare is Anytime-only. Detection: `is_advance = len(fares["singles"]) > 1`. (Mornings are peak so off-peak fares never apply.)
+- **Evening direction & London Bridge:** querying `London Terminals → home` makes the planner resolve the boarding point to **London Bridge** — the journey detail's *origin* is already London Bridge, so its `scheduledTime` is the London Bridge departure. This is exactly the time we want (all the trains call there), so the evening reuses the same `plan_day → journey_detail → parse_times` pipeline with **no calling-points fetch** and the same per-day request budget as the morning. The evening time window (`evening_window_start`/`evening_window_end`, default 17:45–19:15) therefore applies at London Bridge.
 
 ## Politeness
 

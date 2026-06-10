@@ -15,6 +15,7 @@ import click
 from core.config import load_config
 from core.client import TrainClient
 from core.dates import travel_dates
+from core.directions import morning_direction, evening_direction
 from core.storage import load_record
 from commands.search import gather_week, CONFIG_FILE
 
@@ -25,17 +26,21 @@ _ESTIMATED_WEEKS = 14
 
 
 @click.command("refresh-price-data")
-def refresh_price_data_command():
+@click.option("--evening", "evening", is_flag=True,
+              help="Walk the evening return (London → home) instead of the morning.")
+def refresh_price_data_command(evening: bool):
     """Refresh fares for every week from tomorrow until no trains are returned.
 
     Slow by design — set it going and check back later (or watch `view` in
     another terminal). A randomised pause spaces out each week's requests.
+    Morning by default; pass --evening for the evening return direction.
     """
     cfg = load_config(CONFIG_FILE)
+    direction = evening_direction(cfg) if evening else morning_direction(cfg)
     client = TrainClient(pause_seconds=cfg.request_pause_seconds)
 
     start = dt.date.today() + dt.timedelta(days=1)
-    click.echo(f"{cfg.origin_name} → {cfg.destination_name}")
+    click.echo(f"{direction.origin_name} → {direction.destination_name}")
     click.echo(f"Refreshing from {start.isoformat()} onwards, "
                f"week by week, until no trains are returned.\n")
 
@@ -55,7 +60,7 @@ def refresh_price_data_command():
                 week_date += dt.timedelta(days=7)
                 continue
 
-            found = gather_week(client, cfg, dates, now, existing)
+            outcome = gather_week(client, cfg, dates, now, existing, direction)
 
             # Advance the bar by a week, but hold short of full until we stop,
             # so a finished run reads as 100% rather than overflowing the guess.
@@ -63,13 +68,16 @@ def refresh_price_data_command():
             bar.update(step, current_item=label)
             weeks_done += 1
 
-            if not found:
+            if not outcome.found:
                 bar.update(_ESTIMATED_WEEKS - bar.pos, current_item="done")
                 break
 
-            # Randomised, polite pause between weeks — never a burst.
-            time.sleep(random.uniform(cfg.refresh_pause_min_seconds,
-                                      cfg.refresh_pause_max_seconds))
+            # Randomised, polite pause between weeks — never a burst. Skipped
+            # when the week was entirely served from today's cache (no requests
+            # were made, so there is nothing to space out).
+            if outcome.fetched:
+                time.sleep(random.uniform(cfg.refresh_pause_min_seconds,
+                                          cfg.refresh_pause_max_seconds))
             week_date += dt.timedelta(days=7)
 
     click.echo(f"\nDone. Walked {weeks_done} week(s) from {start.isoformat()}; "

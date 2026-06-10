@@ -39,6 +39,26 @@ def remove_day(path: Path, date_str: str) -> None:
         _write(path, record)
 
 
+def clear_day_direction(path: Path, date_str: str, direction, other_trains_key: str) -> None:
+    """Drop one direction's keys from a day, removing the date only if empty.
+
+    Used when a lookup finds no trains for `direction`: the opposite direction's
+    data (named by `other_trains_key`) is preserved. The whole date is removed
+    only when the other direction has no trains either.
+    """
+    record = load_record(path)
+    day = record.get(date_str)
+    if not day:
+        return
+    for key in (direction.trains_key, direction.history_key, direction.checked_key):
+        day.pop(key, None)
+    if day.get(other_trains_key):
+        record[date_str] = day
+    else:
+        record.pop(date_str, None)
+    _write(path, record)
+
+
 def write_meta(path: Path, meta: dict | None) -> None:
     """Set (or clear, when None) the reserved meta entry in the record."""
     record = load_record(path)

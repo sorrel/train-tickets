@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 
-from core.fares import parse_plan, earliest_n, parse_times, build_options, TrainOption
+from core.fares import (
+    parse_plan, earliest_n, parse_times, build_options, TrainOption,
+    NETWORK_RAILCARD_PENCE, RAILCARD_LABEL, shows_railcard, effective_pence,
+    options_from_record,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -98,3 +102,39 @@ def test_build_options_sorts_by_departure_time():
     assert [o.depart for o in options] == ["06:10", "06:40"]   # time order, not price order
     assert all(isinstance(o, TrainOption) for o in options)
     assert options[0].price_pence == 1950 and options[1].price_pence == 1640
+
+
+# ---------------------------------------------------------------------------
+# Network Railcard cap — evening fares above the £14.10 single back are never
+# worth buying, so they are shown (and compared) as the railcard instead.
+# ---------------------------------------------------------------------------
+
+def test_network_railcard_single_is_fourteen_ten():
+    assert NETWORK_RAILCARD_PENCE == 1410
+    assert RAILCARD_LABEL == "£14.10 Network Railcard"
+
+
+def test_shows_railcard_only_for_evening_fares_above_the_cap():
+    assert shows_railcard(1500, evening=True) is True       # dearer evening → railcard
+    assert shows_railcard(1410, evening=True) is False      # exactly the cap → not dearer
+    assert shows_railcard(900, evening=True) is False       # cheaper evening → real fare
+    assert shows_railcard(1500, evening=False) is False     # morning is never capped
+
+
+def test_effective_pence_caps_only_dearer_evening_fares():
+    assert effective_pence(1800, evening=True) == 1410      # capped to the railcard
+    assert effective_pence(900, evening=True) == 900        # left alone when cheaper
+    assert effective_pence(1800, evening=False) == 1800     # morning untouched
+
+
+def test_options_from_record_rebuilds_trains_without_arrival():
+    trains = [
+        {"depart": "18:02", "price_pence": 940, "is_advance": True},
+        {"depart": "18:34", "price_pence": 1800, "is_advance": True},
+    ]
+    options = options_from_record(trains)
+    assert all(isinstance(o, TrainOption) for o in options)
+    assert [o.depart for o in options] == ["18:02", "18:34"]
+    assert [o.price_pence for o in options] == [940, 1800]
+    assert options[0].is_advance is True
+    assert options[0].arrive == ""        # arrival is not stored, so blank on reprint

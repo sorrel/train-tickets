@@ -1,6 +1,16 @@
 from core.storage import (
-    load_record, save_day, remove_day, write_meta, updated_horizon, META_KEY,
+    load_record, save_day, remove_day, write_meta, updated_horizon,
+    clear_day_direction, META_KEY,
 )
+from core.directions import morning_direction, evening_direction
+from types import SimpleNamespace
+
+
+def _both_cfg():
+    return SimpleNamespace(
+        origin_nlc="5230", origin_name="TW", destination_nlc="1072",
+        destination_name="LDN", window_start="05:55", window_end="08:05",
+        evening_window_start="17:45", evening_window_end="19:15")
 
 
 def test_load_record_missing_file_returns_empty(tmp_path):
@@ -34,6 +44,38 @@ def test_remove_day_missing_is_noop(tmp_path):
     path = tmp_path / "prices.json"
     save_day(path, "2026-08-12", {"trains": [1]})
     remove_day(path, "2026-08-13")   # not present
+    assert set(load_record(path)) == {"2026-08-12"}
+
+
+def test_clear_day_direction_keeps_day_when_other_direction_has_trains(tmp_path):
+    path = tmp_path / "prices.json"
+    save_day(path, "2026-08-12", {
+        "checked_at": "2026-06-06T10:00:00", "trains": [{"depart": "06:05"}],
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [{"depart": "18:00"}],
+        "evening_price_history": [{"checked_at": "x", "cheapest_pence": 1}],
+    })
+    clear_day_direction(path, "2026-08-12", evening_direction(_both_cfg()), "trains")
+    day = load_record(path)["2026-08-12"]
+    assert "evening_trains" not in day and "evening_checked_at" not in day
+    assert "evening_price_history" not in day
+    assert day["trains"] == [{"depart": "06:05"}]   # morning untouched
+
+
+def test_clear_day_direction_removes_date_when_no_other_trains(tmp_path):
+    path = tmp_path / "prices.json"
+    save_day(path, "2026-08-12", {
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [{"depart": "18:00"}],
+    })
+    clear_day_direction(path, "2026-08-12", evening_direction(_both_cfg()), "trains")
+    assert "2026-08-12" not in load_record(path)
+
+
+def test_clear_day_direction_missing_day_is_noop(tmp_path):
+    path = tmp_path / "prices.json"
+    save_day(path, "2026-08-12", {"trains": [1]})
+    clear_day_direction(path, "2026-09-01", morning_direction(_both_cfg()), "evening_trains")
     assert set(load_record(path)) == {"2026-08-12"}
 
 

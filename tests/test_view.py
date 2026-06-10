@@ -319,6 +319,146 @@ def test_cheapest_marker_coexists_with_price_change():
 
 
 # ---------------------------------------------------------------------------
+# Evening direction — shown alongside morning, labelled, markers per direction
+# ---------------------------------------------------------------------------
+
+def _both(date_str: str, morning_pence: int = 1250, evening_pence: int = 2110,
+          checked_at: str = "2026-06-06T10:00:00") -> dict:
+    return {
+        "checked_at": checked_at,
+        "trains": [{"depart": "07:15", "price_pence": morning_pence, "is_advance": True}],
+        "evening_checked_at": checked_at,
+        "evening_trains": [{"depart": "18:00", "price_pence": evening_pence, "is_advance": True}],
+    }
+
+
+def test_render_week_morning_only_has_no_direction_labels():
+    record = {"2026-08-12": _day("2026-08-12")}
+    lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
+    text = "\n".join(lines)
+    assert "Morning" not in text and "Evening" not in text
+
+
+def test_render_week_labels_both_directions_when_evening_present():
+    # Sub-cap evening fare so a real price is shown (capping is tested elsewhere).
+    record = {"2026-08-12": _both("2026-08-12", evening_pence=1390)}
+    lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
+    text = "\n".join(lines)
+    assert "Morning" in text and "Evening" in text
+    assert "12.50" in text and "13.90" in text     # both prices shown
+    assert "07:15" in text and "18:00" in text      # both departures shown
+    assert text.index("Morning") < text.index("Evening")
+
+
+def test_render_week_evening_only_day_shows_only_evening():
+    record = {"2026-08-12": {
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [{"depart": "18:00", "price_pence": 1390, "is_advance": True}],
+    }}
+    lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
+    text = "\n".join(lines)
+    assert "Evening" in text and "13.90" in text
+    assert "Morning" not in text
+
+
+def test_displayed_prices_for_evening_key():
+    record = {_TUE: _both(_TUE, morning_pence=1250, evening_pence=2110)}
+    assert displayed_prices(record, [_TUE], "evening_trains") == [1410]   # capped
+
+
+def test_displayed_prices_caps_dear_evening_at_railcard_but_keeps_cheap():
+    record = {_TUE: {"evening_checked_at": "2026-06-06T10:00:00", "evening_trains": [
+        {"depart": "18:00", "price_pence": 1800, "is_advance": True},   # → 1410
+        {"depart": "18:30", "price_pence": 900, "is_advance": True},    # kept
+    ]}}
+    assert sorted(displayed_prices(record, [_TUE], "evening_trains")) == [900, 1410]
+
+
+def test_displayed_prices_does_not_cap_morning():
+    record = {_TUE: _day(_TUE, price_pence=1800)}
+    assert displayed_prices(record, [_TUE]) == [1800]
+
+
+def test_render_week_evening_shows_railcard_for_dear_fare():
+    record = {"2026-08-12": {
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [{"depart": "18:00", "price_pence": 1800, "is_advance": True}],
+    }}
+    text = "\n".join(render_week(MONDAY, ["2026-08-12"], record, TODAY))
+    assert "£14.10 Network Railcard" in text
+    assert "18.00" not in text
+
+
+def test_render_week_railcard_line_hides_price_movement():
+    # A railcard line is pinned at £14.10, so the raw advance movement (which the
+    # traveller won't pay) is not shown beside it.
+    record = {"2026-08-12": {
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [{"depart": "18:00", "price_pence": 1800, "is_advance": True}],
+        "evening_price_history": [
+            {"checked_at": "2026-06-01T09:00:00", "cheapest_pence": 2000}],
+    }}
+    text = "\n".join(render_week(MONDAY, ["2026-08-12"], record, TODAY))
+    assert "£14.10 Network Railcard" in text
+    assert "since" not in text and "↓" not in text and "↑" not in text
+
+
+def test_render_week_evening_markers_use_capped_price():
+    # Two over-cap evening trains both have an effective price of £14.10, so both
+    # are the cheapest on show — proving the marker uses the capped price, not raw.
+    record = {"2026-08-12": {
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [
+            {"depart": "18:00", "price_pence": 1500, "is_advance": True},
+            {"depart": "18:30", "price_pence": 1800, "is_advance": True},
+        ],
+    }}
+    text = "\n".join(render_week(MONDAY, ["2026-08-12"], record, TODAY,
+                                 evening_cheapest=1410, evening_flag=True))
+    assert text.count("← cheapest") == 2
+    assert text.count("£14.10 Network Railcard") == 2
+
+
+def test_view_marks_each_direction_cheapest_independently():
+    # Morning low 12.50 (vs 18.00); evening low 11.00 (vs 13.90, both sub-cap).
+    # Each direction's own cheapest gets the green marker — never compared.
+    record = {
+        "2026-08-11": _both("2026-08-11", morning_pence=1250, evening_pence=1390),
+        "2026-08-18": _both("2026-08-18", morning_pence=1800, evening_pence=1100),
+    }
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    cheapest_lines = [l for l in result.output.splitlines() if "← cheapest" in l]
+    prices = "".join(cheapest_lines)
+    assert "12.50" in prices and "11.00" in prices     # one per direction
+    assert "18.00" not in prices and "13.90" not in prices
+
+
+def test_view_includes_day_with_only_evening_trains():
+    record = {"2026-08-12": {
+        "evening_checked_at": "2026-06-06T10:00:00",
+        "evening_trains": [{"depart": "18:00", "price_pence": 1390, "is_advance": True}],
+    }}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert result.exit_code == 0
+    assert "12 Aug" in result.output and "13.90" in result.output
+
+
+def test_view_header_shows_both_routes_when_evening_present():
+    record = {"2026-08-12": _both("2026-08-12")}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert "Origin → Dest" in result.output       # morning route
+    assert "Dest → Origin" in result.output       # evening route (reversed)
+
+
+def test_view_header_unchanged_when_no_evening_data():
+    record = {"2026-08-12": _day("2026-08-12")}
+    result = _run_view(record, dt.date(2026, 6, 6))
+    assert "Origin → Dest" in result.output
+    assert "Dest → Origin" not in result.output   # no evening line
+
+
+# ---------------------------------------------------------------------------
 # view_command — future-only by default, --all to include past/today
 # ---------------------------------------------------------------------------
 

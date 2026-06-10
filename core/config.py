@@ -26,6 +26,11 @@ class JourneyConfig:
     # ordinary customer rather than a burst of traffic.
     refresh_pause_min_seconds: float = 10.0
     refresh_pause_max_seconds: float = 30.0
+    # Evening direction (London → home). The route is the morning's stations
+    # swapped; only the window differs. Defaulted so an existing config without
+    # these fields keeps working — evening is opt-in via the --evening switch.
+    evening_window_start: str = "17:45"
+    evening_window_end: str = "19:15"
 
 
 def load_config(path: Path) -> JourneyConfig:

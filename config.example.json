@@ -6,6 +6,8 @@
   "travel_days": ["Tue", "Wed", "Thu"],
   "window_start": "05:45",
   "window_end": "08:00",
+  "evening_window_start": "17:45",
+  "evening_window_end": "19:15",
   "show_count": 5,
   "storage_path": "~/.train-tickets/prices.json",
   "request_pause_seconds": 1.0,
