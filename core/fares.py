@@ -8,14 +8,51 @@ below the Anytime ceiling; a journey with a single lone fare is Anytime-only.
 from dataclasses import dataclass
 from typing import Callable
 
+# The walk-up Network Railcard single fare back from London. An evening advance
+# fare above this is never worth buying — you would just buy the railcard single
+# on the day — so the evening direction shows (and compares) it as the railcard.
+NETWORK_RAILCARD_PENCE = 1410
+RAILCARD_LABEL = "£14.10 Network Railcard"
+
 
 @dataclass
 class TrainOption:
     depart: str        # "HH:MM"
-    arrive: str        # "HH:MM"
+    arrive: str        # "HH:MM" — blank when rebuilt from a stored record
     price_pence: int
     is_advance: bool
     journey_ref: str
+
+
+def shows_railcard(price_pence: int, evening: bool) -> bool:
+    """True when an evening fare is dearer than the £14.10 railcard single."""
+    return evening and price_pence > NETWORK_RAILCARD_PENCE
+
+
+def effective_pence(price_pence: int, evening: bool) -> int:
+    """The price a sensible traveller actually pays.
+
+    Evening advances above the railcard single are capped at £14.10 (you'd buy
+    the railcard instead); everything else is left untouched. Used so the cheap
+    markers compare what is really shown, not a hidden raw fare.
+    """
+    if shows_railcard(price_pence, evening):
+        return NETWORK_RAILCARD_PENCE
+    return price_pence
+
+
+def options_from_record(trains: list[dict]) -> list["TrainOption"]:
+    """Rebuild TrainOptions from a stored day (no network).
+
+    The record keeps only departure, price and the advance flag, so a reprint of
+    same-day cached results has a blank arrival and no journey ref.
+    """
+    return [
+        TrainOption(depart=t["depart"], arrive="",
+                    price_pence=t["price_pence"], is_advance=t["is_advance"],
+                    journey_ref="")
+        for t in trains
+    ]
 
 
 def parse_plan(plan: dict) -> list[dict]:

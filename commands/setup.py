@@ -42,7 +42,9 @@ def status_command():
     from commands.search import CONFIG_FILE
     cfg = load_config(CONFIG_FILE)
     click.echo(click.style("Train Tickets CLI", fg="green"))
-    click.echo(f"  Route:        {cfg.origin_name} → {cfg.destination_name}")
-    click.echo(f"  Window:       {cfg.window_start}–{cfg.window_end}")
+    click.echo(f"  Morning:      {cfg.origin_name} → {cfg.destination_name}"
+               f"  ({cfg.window_start}–{cfg.window_end})")
+    click.echo(f"  Evening:      {cfg.destination_name} → {cfg.origin_name}"
+               f"  ({cfg.evening_window_start}–{cfg.evening_window_end})")
     click.echo(f"  Travel days:  {', '.join(cfg.travel_days)}")
     click.echo(f"  Record:       {cfg.storage_path}")
