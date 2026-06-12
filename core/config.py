@@ -24,8 +24,8 @@ class JourneyConfig:
     # Randomised pause between weeks during refresh-price-data, in seconds.
     # Kept deliberately slow and jittered so a long bulk run stays a polite
     # ordinary customer rather than a burst of traffic.
-    refresh_pause_min_seconds: float = 10.0
-    refresh_pause_max_seconds: float = 30.0
+    refresh_pause_min_seconds: float = 5.0
+    refresh_pause_max_seconds: float = 12.0
     # Evening direction (London → home). The route is the morning's stations
     # swapped; only the window differs. Defaulted so an existing config without
     # these fields keeps working — evening is opt-in via the --evening switch.
