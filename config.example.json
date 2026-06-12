@@ -11,6 +11,6 @@
   "show_count": 5,
   "storage_path": "~/.train-tickets/prices.json",
   "request_pause_seconds": 1.0,
-  "refresh_pause_min_seconds": 10.0,
-  "refresh_pause_max_seconds": 30.0
+  "refresh_pause_min_seconds": 5.0,
+  "refresh_pause_max_seconds": 12.0
 }
