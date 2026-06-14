@@ -66,6 +66,15 @@ def test_format_day_handles_no_trains():
     assert "no trains" in format_day("Tuesday 2026-08-11", []).lower()
 
 
+def test_format_day_distinguishes_a_failed_lookup_from_an_empty_window():
+    # None means the lookup failed (server error); [] means a genuinely empty
+    # window. The two must read differently so a 500 never looks like "no trains".
+    failed = format_day("Tuesday 2026-08-11", None).lower()
+    empty = format_day("Tuesday 2026-08-11", []).lower()
+    assert "failed" in failed and "no trains" not in failed
+    assert "no trains" in empty and "failed" not in empty
+
+
 def test_format_day_evening_shows_railcard_for_dearer_fares_only():
     options = [
         TrainOption("18:02", "18:50", 940, True, "/a"),    # under £14.10 — real fare
@@ -212,6 +221,19 @@ def test_search_removes_a_previously_saved_day_that_now_has_no_trains(tmp_path):
     assert "2026-09-15" not in load_record(storage)
 
 
+def test_search_failed_lookup_shows_message_and_keeps_existing_day(tmp_path):
+    storage = tmp_path / "prices.json"
+    save_day(storage, "2026-09-17", {"checked_at": "2026-05-01T10:00:00",
+                                     "trains": [{"depart": "06:05", "price_pence": 1250,
+                                                 "is_advance": True}]})
+    result = _run_search(storage, lambda *a: None, "2026-09-17", [dt.date(2026, 9, 17)])
+    assert result.exit_code == 0
+    assert "failed" in result.output.lower()
+    assert "no trains found" not in result.output.lower()
+    # the previously saved day is left intact, not wiped by the failure
+    assert load_record(storage)["2026-09-17"]["trains"][0]["price_pence"] == 1250
+
+
 def test_search_saves_days_with_trains(tmp_path):
     storage = tmp_path / "prices.json"
     opts = [TrainOption("06:05", "06:53", 1250, True, "/a")]
@@ -310,7 +332,27 @@ def test_gather_week_reports_not_found_when_no_trains(tmp_path):
         outcome = gather_week(object(), cfg, [dt.date(2026, 9, 15)],
                               "2026-06-06T10:00:00", {})
     assert outcome.found is False
+    assert outcome.failed is False
     assert load_record(storage)[META_KEY]["no_trains_from"] == "2026-09-15"
+
+
+def test_gather_week_failed_lookup_preserves_data_and_skips_the_horizon(tmp_path):
+    # A failed lookup (None) must NOT wipe the saved day nor move the horizon —
+    # the day's emptiness is unreliable, so we leave everything as it was.
+    storage = tmp_path / "prices.json"
+    cfg = _cfg(storage)
+    save_day(storage, "2026-09-15", {"checked_at": "2026-05-01T10:00:00",
+                                      "trains": [{"depart": "06:05", "price_pence": 730,
+                                                  "is_advance": True}]})
+    existing = load_record(storage)
+    with patch("commands.search.lookup_day", return_value=None):
+        from commands.search import gather_week
+        outcome = gather_week(object(), cfg, [dt.date(2026, 9, 15)],
+                              "2026-06-06T10:00:00", existing)
+    assert outcome.failed is True and outcome.found is False
+    record = load_record(storage)
+    assert record["2026-09-15"]["trains"][0]["price_pence"] == 730   # data untouched
+    assert META_KEY not in record                                    # horizon not moved
 
 
 # ---------------------------------------------------------------------------

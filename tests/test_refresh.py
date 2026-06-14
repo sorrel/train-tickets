@@ -9,9 +9,9 @@ from commands.search import WeekOutcome
 # Real-calendar anchors (2026): 08 Jun is a Monday, so 09/10/11 Jun are Tue/Wed/Thu.
 
 
-def _outcome(found: bool, fetched: bool = True) -> WeekOutcome:
+def _outcome(found: bool, fetched: bool = True, failed: bool = False) -> WeekOutcome:
     """A gather_week result; weeks are treated as freshly fetched by default."""
-    return WeekOutcome(found=found, fetched=fetched)
+    return WeekOutcome(found=found, fetched=fetched, failed=failed)
 
 
 def _cfg():
@@ -139,3 +139,16 @@ def test_refresh_reports_completion():
     result, _ = _run(fake_gather, today=dt.date(2026, 6, 7))
     assert "Done" in result.output
     assert "no trains were returned" in result.output
+
+
+def test_refresh_reports_error_stop_distinctly_from_horizon():
+    # An empty week caused by a lookup failure must not be reported as reaching
+    # the booking horizon — the user is told to re-run instead.
+    def fake_gather(client, cfg, dates, now, existing, direction=None, on_day=None):
+        return _outcome(False, failed=True)
+
+    result, _ = _run(fake_gather, today=dt.date(2026, 6, 7))
+    assert result.exit_code == 0
+    assert "server error" in result.output.lower()
+    assert "re-run" in result.output.lower()
+    assert "Done." not in result.output

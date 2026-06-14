@@ -11,7 +11,7 @@ from typing import NamedTuple
 import click
 
 from core.config import load_config
-from core.client import TrainClient
+from core.client import TrainClient, TrainApiError
 from core.dates import travel_dates, WEEKDAY_FULL
 from core.directions import morning_direction, evening_direction, other_trains_key
 from core.fares import (
@@ -23,9 +23,12 @@ from core.fares import (
 class WeekOutcome(NamedTuple):
     """What a week's gathering did. `found` — any date had trains (cached or
     fresh). `fetched` — at least one date actually hit the network (a fully
-    cached week is False, so refresh can skip its between-week pause)."""
+    cached week is False, so refresh can skip its between-week pause). `failed` —
+    at least one date's lookup hit a server/transport error, so an empty week may
+    be incomplete rather than genuinely beyond the booking horizon."""
     found: bool
     fetched: bool
+    failed: bool = False
 from core.storage import (
     load_record, save_day, clear_day_direction, write_meta, updated_horizon, META_KEY,
 )
@@ -41,6 +44,11 @@ def format_day(heading: str, options: list[TrainOption], evening: bool = False) 
     arrival is omitted when blank — a same-day cached reprint has no stored time.
     """
     lines = [click.style(heading, fg="cyan", bold=True)]
+    if options is None:
+        lines.append(click.style(
+            "  (lookup failed — server error; this day was left unchanged, try again later)",
+            fg="yellow"))
+        return "\n".join(lines)
     if not options:
         lines.append("  (no trains found in the window)")
         return "\n".join(lines)
@@ -101,7 +109,7 @@ def day_payload(options: list[TrainOption], checked_at: str,
     return payload
 
 
-def lookup_day(client: TrainClient, cfg, date: dt.date, direction=None) -> list[TrainOption]:
+def lookup_day(client: TrainClient, cfg, date: dt.date, direction=None) -> list[TrainOption] | None:
     """Fetch the earliest TrainOptions for one date and direction (network).
 
     The journey-plan response carries no departure times — only journey refs and
@@ -111,11 +119,20 @@ def lookup_day(client: TrainClient, cfg, date: dt.date, direction=None) -> list[
     trains. A window returns only a handful of journeys. For the evening the
     plan's origin resolves to London Bridge, so the detail times are already the
     London Bridge departures.
+
+    Returns the earliest options, `[]` when the window is genuinely empty (or
+    beyond the booking horizon), or `None` when the lookup failed (server error)
+    — so the caller can leave that day's saved data untouched rather than wiping
+    it as if no trains existed.
     """
     direction = direction or morning_direction(cfg)
     start = f"{date.isoformat()}T{direction.window_start}:00"
     end = f"{date.isoformat()}T{direction.window_end}:00"
-    plan = client.plan_day(direction.origin_nlc, direction.destination_nlc, start, end)
+    try:
+        plan = client.plan_day(direction.origin_nlc, direction.destination_nlc, start, end)
+    except TrainApiError as e:
+        click.echo(f"  lookup failed ({e}); leaving {date.isoformat()} unchanged", err=True)
+        return None
     if not plan:
         return []
     options = build_options(parse_plan(plan), fetch_detail=client.journey_detail)
@@ -155,6 +172,7 @@ def gather_week(client: TrainClient, cfg, dates, now: str, existing: dict,
     train_dates: list[str] = []
     no_train_dates: list[str] = []
     fetched = False
+    failed = False
     for date in dates:
         ds = date.isoformat()
         prev = existing.get(ds)
@@ -165,7 +183,11 @@ def gather_week(client: TrainClient, cfg, dates, now: str, existing: dict,
         else:
             fetched = True
             options = lookup_day(client, cfg, date, direction)
-            if options:
+            if options is None:
+                # Lookup failed — leave any saved data alone and keep this day out
+                # of the horizon calculation (its emptiness is unreliable).
+                failed = True
+            elif options:
                 save_day(cfg.storage_path, ds,
                          day_payload(options, now, prev, direction))
                 train_dates.append(ds)
@@ -178,7 +200,7 @@ def gather_week(client: TrainClient, cfg, dates, now: str, existing: dict,
 
     meta = updated_horizon(existing.get(META_KEY), train_dates, no_train_dates, now)
     write_meta(cfg.storage_path, meta)
-    return WeekOutcome(found=bool(train_dates), fetched=fetched)
+    return WeekOutcome(found=bool(train_dates), fetched=fetched, failed=failed)
 
 
 @click.command("search")

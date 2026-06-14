@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from core.client import TrainClient
+import pytest
+import requests
+
+from core.client import TrainClient, TrainApiError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -53,3 +56,51 @@ def test_plan_day_posts_expected_body():
     assert body["outward"]["rangeStart"] == "2026-06-16T05:44:00"
     assert body["outward"]["arriveDepart"] == "Depart"
     assert req.call_args.kwargs["headers"]["x-access-token"] == "otrl|x"
+
+
+def _client():
+    client = TrainClient(token_page="http://page", pause_seconds=0)
+    client._token = "otrl|x"   # pre-seed to skip scraping
+    return client
+
+
+def test_request_retries_once_on_500_then_succeeds():
+    client = _client()
+    plan = {"result": {"outward": []}}
+    responses = [_resp(status=500, text="boom"), _resp(payload=plan)]
+    with patch.object(client.session, "request", side_effect=responses) as req:
+        result = client.plan_day("5230", "1072", "a", "b")
+    assert result == plan          # the retry succeeded
+    assert req.call_count == 2      # one retry, no more
+
+
+def test_request_raises_after_a_persistent_500():
+    client = _client()
+    with patch.object(client.session, "request",
+                      return_value=_resp(status=500, text="still down")):
+        with pytest.raises(TrainApiError):
+            client.plan_day("5230", "1072", "a", "b")
+
+
+def test_request_raises_on_transport_error():
+    client = _client()
+    with patch.object(client.session, "request",
+                      side_effect=requests.ConnectionError("no route")):
+        with pytest.raises(TrainApiError):
+            client.plan_day("5230", "1072", "a", "b")
+
+
+def test_horizon_422_returns_none_not_an_error():
+    client = _client()
+    payload = {"errors": [{"errorCode": "OutwardTimebandTooFarAhead"}]}
+    with patch.object(client.session, "request",
+                      return_value=_resp(status=422, payload=payload)):
+        assert client.plan_day("5230", "1072", "a", "b") is None   # expected, not raised
+
+
+def test_journey_detail_swallows_failure_and_returns_none():
+    # A failed detail fetch drops that one train rather than failing the day.
+    client = _client()
+    with patch.object(client.session, "request",
+                      return_value=_resp(status=500, text="boom")):
+        assert client.journey_detail("/jp/journey/abc") is None
