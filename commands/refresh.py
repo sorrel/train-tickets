@@ -46,6 +46,7 @@ def refresh_price_data_command(evening: bool):
 
     week_date = start
     weeks_done = 0
+    stopped_on_error = False
     with click.progressbar(length=_ESTIMATED_WEEKS, label="Refreshing prices",
                            item_show_func=lambda s: s or "") as bar:
         while True:
@@ -69,6 +70,12 @@ def refresh_price_data_command(evening: bool):
             weeks_done += 1
 
             if not outcome.found:
+                # An empty week normally means we have reached the booking
+                # horizon. But if the emptiness came from a lookup failure, we
+                # cannot trust it — stop (rather than hammer a poorly server) and
+                # say so, so the user knows to re-run rather than assuming we are
+                # genuinely done.
+                stopped_on_error = outcome.failed
                 bar.update(_ESTIMATED_WEEKS - bar.pos, current_item="done")
                 break
 
@@ -80,5 +87,10 @@ def refresh_price_data_command(evening: bool):
                                           cfg.refresh_pause_max_seconds))
             week_date += dt.timedelta(days=7)
 
-    click.echo(f"\nDone. Walked {weeks_done} week(s) from {start.isoformat()}; "
-               f"stopped when no trains were returned.")
+    if stopped_on_error:
+        click.echo(f"\nStopped after {weeks_done} week(s) because a lookup failed "
+                   f"(server error), not because we reached the booking horizon. "
+                   f"Some weeks may be incomplete — re-run later to fill them in.")
+    else:
+        click.echo(f"\nDone. Walked {weeks_done} week(s) from {start.isoformat()}; "
+                   f"stopped when no trains were returned.")

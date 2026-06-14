@@ -101,7 +101,10 @@ def build_options(
     """
     options = []
     for o in chosen:
-        depart, arrive = parse_times(fetch_detail(o["journey_ref"]))
+        detail = fetch_detail(o["journey_ref"])
+        if detail is None:
+            continue   # detail fetch failed — drop this one train, keep the rest
+        depart, arrive = parse_times(detail)
         options.append(TrainOption(
             depart=depart, arrive=arrive,
             price_pence=o["price_pence"], is_advance=o["is_advance"],

@@ -104,6 +104,21 @@ def test_build_options_sorts_by_departure_time():
     assert options[0].price_pence == 1950 and options[1].price_pence == 1640
 
 
+def test_build_options_skips_a_journey_whose_detail_fetch_failed():
+    # A None detail (failed fetch) drops just that train, keeping the others.
+    chosen = [
+        {"journey_ref": "/ok", "price_pence": 1640, "is_advance": True},
+        {"journey_ref": "/bad", "price_pence": 1950, "is_advance": True},
+    ]
+    details = {
+        "/ok": {"result": {"origin": {"time": {"scheduledTime": "2026-06-16T06:40:00"}},
+                           "destination": {"time": {"scheduledTime": "2026-06-16T07:30:00"}}}},
+        "/bad": None,
+    }
+    options = build_options(chosen, fetch_detail=lambda ref: details[ref])
+    assert [o.depart for o in options] == ["06:40"]   # only the fetchable one survives
+
+
 # ---------------------------------------------------------------------------
 # Network Railcard cap — evening fares above the £14.10 single back are never
 # worth buying, so they are shown (and compared) as the railcard instead.

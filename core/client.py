@@ -19,6 +19,20 @@ DEFAULT_TOKEN_PAGE = (
 )
 _TOKEN_RE = re.compile(r'"apiAccessToken":"([^"]+)"')
 
+# Transient server-side statuses worth one polite retry. SouthEastern's backend
+# occasionally returns a 500 "InternalError"; the same request usually then works.
+_RETRY_STATUSES = (500, 502, 503, 504)
+
+
+class TrainApiError(Exception):
+    """A genuine lookup failure (server error or transport fault).
+
+    Distinct from a legitimate empty result or the expected beyond-horizon 422,
+    both of which return None. Callers use this to tell "the lookup failed" apart
+    from "there are simply no trains", so a server hiccup never masquerades as an
+    empty day.
+    """
+
 
 class TrainClient:
     def __init__(self, token_page: str = DEFAULT_TOKEN_PAGE, pause_seconds: float = 1.0):
@@ -47,16 +61,24 @@ class TrainClient:
         return {"accept": "application/json", "content-type": "application/json",
                 "x-access-token": self._token, "user-agent": "Mozilla/5.0"}
 
-    def _request(self, method: str, path: str, json_body: dict | None = None) -> dict | None:
-        if not self.get_token():
-            return None
+    def _send(self, method: str, path: str, json_body: dict | None):
+        """One politely-spaced HTTP call. Raises TrainApiError on a transport fault."""
         time.sleep(self.pause_seconds)   # polite spacing before every API call
         try:
-            resp = self.session.request(method, f"{API_BASE}{path}",
+            return self.session.request(method, f"{API_BASE}{path}",
                                         json=json_body, headers=self._headers(), timeout=30)
         except requests.RequestException as e:
-            click.echo(f"Request failed: {e}", err=True)
+            raise TrainApiError(f"Request failed: {e}") from e
+
+    def _request(self, method: str, path: str, json_body: dict | None = None) -> dict | None:
+        """Make a request, returning parsed JSON, or None for an empty/beyond-horizon
+        result. Raises TrainApiError for a genuine failure (so callers can tell a
+        server error apart from a day that simply has no trains)."""
+        if not self.get_token():
             return None
+        resp = self._send(method, path, json_body)
+        if resp.status_code in _RETRY_STATUSES:
+            resp = self._send(method, path, json_body)   # one polite retry on a transient 5xx
         if resp.status_code in (401, 403):
             self._token = None   # token rotated — drop cache so next run rescrapes
             click.echo("Access token rejected; clearing cache.", err=True)
@@ -68,11 +90,9 @@ class TrainClient:
                 errors = []
             if any(e.get("errorCode") == "OutwardTimebandTooFarAhead" for e in errors):
                 return None  # beyond booking horizon — expected, not an error
-            click.echo(f"API error {resp.status_code}: {resp.text[:200]}", err=True)
-            return None
+            raise TrainApiError(f"API error {resp.status_code}: {resp.text[:200]}")
         if resp.status_code != 200:
-            click.echo(f"API error {resp.status_code}: {resp.text[:200]}", err=True)
-            return None
+            raise TrainApiError(f"API error {resp.status_code}: {resp.text[:200]}")
         return resp.json()
 
     def plan_day(self, origin: str, destination: str, range_start: str, range_end: str) -> dict | None:
@@ -88,5 +108,14 @@ class TrainClient:
         return self._request("POST", "/jp/journey-plan", body)
 
     def journey_detail(self, journey_ref: str) -> dict | None:
-        """GET the detail (times) for a journey. journey_ref is the url-encoded path."""
-        return self._request("GET", journey_ref)
+        """GET the detail (times) for a journey. journey_ref is the url-encoded path.
+
+        A failed detail fetch returns None (the journey is dropped from the day)
+        rather than failing the whole day — losing one train's time is better than
+        losing the lot. The whole-day plan failure is the one that signals upward.
+        """
+        try:
+            return self._request("GET", journey_ref)
+        except TrainApiError as e:
+            click.echo(f"  could not fetch journey detail ({e}); skipping it", err=True)
+            return None
