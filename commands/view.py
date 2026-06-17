@@ -90,12 +90,19 @@ def _price_change_suffix(day_data: dict, current_pence: int,
     return click.style(f"  ↓£{abs(diff) / 100:.2f} since {since}", fg="green")
 
 
-def _date_colour(text: str, date: dt.date, today: dt.date) -> str:
-    """Dim past dates, highlight today, leave future dates plain."""
+def _date_colour(text: str, date: dt.date, today: dt.date,
+                 future_fg: str | None = None) -> str:
+    """Dim past dates, highlight today, leave future dates plain.
+
+    `future_fg` tints an otherwise-plain future date — used to mute "just normal"
+    fares to a slight grey. Past dimming and the today highlight still win.
+    """
     if date < today:
         return click.style(text, fg="bright_black")
     if date == today:
         return click.style(text, fg="yellow")
+    if future_fg:
+        return click.style(text, fg=future_fg)
     return text
 
 
@@ -105,14 +112,20 @@ def _train_line(train: dict, change: str, date: dt.date, today: dt.date,
 
     An evening fare dearer than the £14.10 Network Railcard single is shown as
     the railcard instead — you'd buy that on the day rather than the advance.
+
+    "Just normal" fares are muted to a slight grey on future dates: the evening
+    Network Railcard fallback (nothing special — the walk-up fare), and morning
+    fares over £20 (close to the Anytime ceiling, so no real advance saving).
     """
-    if shows_railcard(train["price_pence"], evening):
+    railcard = shows_railcard(train["price_pence"], evening)
+    if railcard:
         plain = f"{' ' * indent}{train['depart']}   {RAILCARD_LABEL}"
     else:
         price_col = f"£{train['price_pence'] / 100:>6.2f}"
         kind_col = "Advance" if train["is_advance"] else "Anytime"
         plain = f"{' ' * indent}{train['depart']}   {price_col}   {kind_col}"
-    return _date_colour(plain, date, today) + change
+    muted = railcard or (not evening and train["price_pence"] > 2000)
+    return _date_colour(plain, date, today, "white" if muted else None) + change
 
 
 def _render_direction(day_data: dict, date: dt.date, today: dt.date, spec: tuple,
