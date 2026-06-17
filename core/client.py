@@ -86,7 +86,7 @@ class TrainClient:
         if resp.status_code == 422:
             try:
                 errors = resp.json().get("errors", [])
-            except Exception:
+            except ValueError:   # body wasn't JSON
                 errors = []
             if any(e.get("errorCode") == "OutwardTimebandTooFarAhead" for e in errors):
                 return None  # beyond booking horizon — expected, not an error

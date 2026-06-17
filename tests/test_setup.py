@@ -6,7 +6,7 @@ from commands.setup import status_command
 
 
 def _run_status(cfg):
-    with patch("core.config.load_config", return_value=cfg):
+    with patch("commands.setup.load_config", return_value=cfg):
         return CliRunner().invoke(status_command, [])
 
 

@@ -8,6 +8,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+# The committed route config lives at the repo root, beside this package.
+CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
+
 
 @dataclass
 class JourneyConfig:

@@ -6,6 +6,8 @@ import textwrap
 
 import click
 
+from core.config import load_config, CONFIG_FILE
+
 
 class ColouredGroup(click.Group):
     """Click group with coloured command listing."""
@@ -38,8 +40,6 @@ class ColouredGroup(click.Group):
 @click.command("status")
 def status_command():
     """Show configuration and where the local record lives."""
-    from core.config import load_config
-    from commands.search import CONFIG_FILE
     cfg = load_config(CONFIG_FILE)
     click.echo(click.style("Train Tickets CLI", fg="green"))
     click.echo(f"  Morning:      {cfg.origin_name} → {cfg.destination_name}"
