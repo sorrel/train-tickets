@@ -27,6 +27,10 @@ class Direction:
     history_key: str
     checked_key: str
 
+    @property
+    def is_evening(self) -> bool:
+        return self.name == "evening"
+
 
 def morning_direction(cfg) -> Direction:
     return Direction(
@@ -51,4 +55,4 @@ def evening_direction(cfg) -> Direction:
 
 def other_trains_key(direction: Direction) -> str:
     """The trains key of the *opposite* direction (used when clearing one side)."""
-    return "evening_trains" if direction.name == "morning" else "trains"
+    return "trains" if direction.is_evening else "evening_trains"

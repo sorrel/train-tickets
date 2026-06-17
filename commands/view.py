@@ -4,11 +4,10 @@ import datetime as dt
 
 import click
 
-from core.config import load_config
+from core.config import load_config, CONFIG_FILE
 from core.dates import WEEKDAY_ABBR, MONTH_ABBR
 from core.fares import effective_pence, shows_railcard, RAILCARD_LABEL
 from core.storage import load_record, META_KEY
-from commands.search import CONFIG_FILE
 
 # How many trains are shown (and considered for the cheap markers) per day.
 _TRAINS_PER_DAY = 2

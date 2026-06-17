@@ -12,12 +12,12 @@ import time
 
 import click
 
-from core.config import load_config
+from core.config import load_config, CONFIG_FILE
 from core.client import TrainClient
 from core.dates import travel_dates
 from core.directions import morning_direction, evening_direction
 from core.storage import load_record
-from commands.search import gather_week, CONFIG_FILE
+from commands.search import gather_week
 
 # Advance fares are typically on sale ~12 weeks ahead; a little headroom keeps
 # the progress bar sensible. It is only an estimate — the run stops when a week

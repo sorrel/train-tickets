@@ -5,18 +5,22 @@ previous lookup the old price is appended to price_history on that day's record.
 """
 
 import datetime as dt
-from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 import click
 
-from core.config import load_config
+from core.config import load_config, JourneyConfig, CONFIG_FILE
 from core.client import TrainClient, TrainApiError
 from core.dates import travel_dates, WEEKDAY_FULL
-from core.directions import morning_direction, evening_direction, other_trains_key
+from core.directions import (
+    Direction, morning_direction, evening_direction, other_trains_key,
+)
 from core.fares import (
     parse_plan, earliest_n, build_options, TrainOption,
     shows_railcard, RAILCARD_LABEL, options_from_record,
+)
+from core.storage import (
+    load_record, save_day, clear_day_direction, write_meta, updated_horizon, META_KEY,
 )
 
 
@@ -29,11 +33,6 @@ class WeekOutcome(NamedTuple):
     found: bool
     fetched: bool
     failed: bool = False
-from core.storage import (
-    load_record, save_day, clear_day_direction, write_meta, updated_horizon, META_KEY,
-)
-
-CONFIG_FILE = Path(__file__).parent.parent / "config.local.json"
 
 
 def format_day(heading: str, options: list[TrainOption], evening: bool = False) -> str:
@@ -64,7 +63,8 @@ def format_day(heading: str, options: list[TrainOption], evening: bool = False) 
 
 
 def day_payload(options: list[TrainOption], checked_at: str,
-                previous: dict | None = None, direction=None) -> dict:
+                previous: dict | None = None,
+                direction: Direction | None = None) -> dict:
     """Build the JSON-serialisable record for one day's direction.
 
     `direction` selects which record keys are written (morning uses the original
@@ -109,7 +109,8 @@ def day_payload(options: list[TrainOption], checked_at: str,
     return payload
 
 
-def lookup_day(client: TrainClient, cfg, date: dt.date, direction=None) -> list[TrainOption] | None:
+def lookup_day(client: TrainClient, cfg: JourneyConfig, date: dt.date,
+               direction: Direction | None = None) -> list[TrainOption] | None:
     """Fetch the earliest TrainOptions for one date and direction (network).
 
     The journey-plan response carries no departure times — only journey refs and
@@ -139,7 +140,7 @@ def lookup_day(client: TrainClient, cfg, date: dt.date, direction=None) -> list[
     return earliest_n(options, cfg.show_count)
 
 
-def _checked_today(prev: dict | None, direction, today: str) -> bool:
+def _checked_today(prev: dict | None, direction: Direction, today: str) -> bool:
     """True if `prev` already holds this direction's trains, checked today.
 
     Only train-days are guarded: a no-train day clears its check marker, so it
@@ -150,8 +151,10 @@ def _checked_today(prev: dict | None, direction, today: str) -> bool:
     return (prev.get(direction.checked_key) or "")[:10] == today
 
 
-def gather_week(client: TrainClient, cfg, dates, now: str, existing: dict,
-                direction=None, on_day=None) -> WeekOutcome:
+def gather_week(client: TrainClient, cfg: JourneyConfig, dates: list[dt.date],
+                now: str, existing: dict, direction: Direction | None = None,
+                on_day: Callable[[dt.date, list[TrainOption] | None], None] | None = None
+                ) -> WeekOutcome:
     """Look up, persist, and update the horizon for each date in a week.
 
     Operates on one `direction` (morning by default). Days with trains are
@@ -228,11 +231,9 @@ def search_command(week_date: str, days: str | None, evening: bool):
     except ValueError as e:
         raise click.BadParameter(str(e))
 
-    evening = direction.name == "evening"
-
     def show(date, options):
         heading = f"{WEEKDAY_FULL[date.weekday()]} {date.isoformat()}"
-        click.echo(format_day(heading, options, evening))
+        click.echo(format_day(heading, options, direction.is_evening))
         click.echo()
 
     gather_week(client, cfg, dates, now, existing, direction, on_day=show)
