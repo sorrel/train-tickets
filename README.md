@@ -4,7 +4,7 @@ A Python CLI tool for looking up UK train advance ticket prices on a commuter ro
 
 ## Commands
 
-Given any date, the tool finds that date's week and reports the earliest morning trains on your configured route and time window, on the configured days (Tue/Wed/Thu by default, overridable with `--days`). Every lookup is saved, so prices build up over time.
+Given any date, the tool finds that date's week and reports the morning trains on your configured route and time window, on the configured days (Tue/Wed/Thu by default, overridable with `--days`). Every train in the window is saved; `view` shows the cheapest few per day. Every lookup is saved, so prices build up over time.
 
 There are two directions. The **morning** run (home → London) is the default. Add `--evening` for the **evening return** (London → home); its window (17:45–19:15 by default) is timed at London Bridge, since every train calls there. `view` shows both directions together for any day that has them.
 
@@ -16,7 +16,7 @@ There are two directions. The **morning** run (home → London) is the default. 
 | `status` | Show the active configuration and local record path |
 
 ```bash
-# Show (and save) the earliest morning fares for the week of 15 August 2026
+# Show (and save) the morning fares for the week of 15 August 2026
 uv run python tickets.py search 2026-08-15
 
 # The evening return (London → home) for that week

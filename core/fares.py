@@ -72,16 +72,6 @@ def parse_plan(plan: dict) -> list[dict]:
     return options
 
 
-def earliest_n(options: list, n: int) -> list:
-    """Return the first n options.
-
-    Call this on a list already sorted by departure (build_options sorts that
-    way), so the result is the n earliest departures. The journey-plan response
-    has no times, so ordering must come from the detail fetch, not the plan.
-    """
-    return options[:n]
-
-
 def parse_times(detail: dict) -> tuple[str, str]:
     """Return (departure, arrival) as 'HH:MM' from a journey-detail response."""
     result = detail.get("result", detail)

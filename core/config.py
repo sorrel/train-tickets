@@ -21,7 +21,6 @@ class JourneyConfig:
     travel_days: list[str]
     window_start: str
     window_end: str
-    show_count: int
     storage_path: Path
     request_pause_seconds: float
     # Randomised pause between weeks during refresh-price-data, in seconds.
@@ -39,6 +38,9 @@ class JourneyConfig:
 def load_config(path: Path) -> JourneyConfig:
     data = json.loads(Path(path).read_text())
     data["storage_path"] = Path(data["storage_path"]).expanduser()
-    if "show_cheapest" in data:
-        data["show_count"] = data.pop("show_cheapest")
+    # Retired keys: lookups now keep every train in the window (the detail calls
+    # have already been made), and the view decides how many to show. Dropped
+    # rather than rejected so an older config file keeps working.
+    data.pop("show_count", None)
+    data.pop("show_cheapest", None)
     return JourneyConfig(**data)

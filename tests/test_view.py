@@ -9,14 +9,15 @@ from commands.view import (
 )
 
 
-def test_cheapest_trains_returns_two_cheapest_in_order():
+def test_cheapest_trains_returns_three_cheapest_in_order():
     trains = [
         {"depart": "07:00", "price_pence": 2100, "is_advance": False},
         {"depart": "07:15", "price_pence": 1400, "is_advance": True},
         {"depart": "07:45", "price_pence": 1900, "is_advance": True},
+        {"depart": "08:00", "price_pence": 2400, "is_advance": False},
     ]
     chosen = cheapest_trains(trains)
-    assert [t["price_pence"] for t in chosen] == [1400, 1900]
+    assert [t["price_pence"] for t in chosen] == [1400, 1900, 2100]
 
 
 def _day(date_str: str, price_pence: int = 1250, is_advance: bool = True,
@@ -140,22 +141,23 @@ def test_render_week_no_trains_stored():
     assert any("no trains" in l for l in lines)
 
 
-def test_render_week_shows_cheapest_two_trains():
+def test_render_week_shows_cheapest_three_trains():
     record = {"2026-08-12": {
         "checked_at": "2026-06-06T10:00:00",
         "trains": [
             {"depart": "07:00", "price_pence": 2490, "is_advance": False},
             {"depart": "07:30", "price_pence": 1250, "is_advance": True},
             {"depart": "07:45", "price_pence": 1890, "is_advance": True},
+            {"depart": "07:55", "price_pence": 2200, "is_advance": False},
         ],
     }}
     lines = render_week(MONDAY, ["2026-08-12"], record, TODAY)
     text = "\n".join(lines)
-    # The two cheapest are shown; the most expensive (24.90) is dropped
-    assert "12.50" in text and "18.90" in text
+    # The three cheapest are shown; the most expensive (24.90) is dropped
+    assert "12.50" in text and "18.90" in text and "22.00" in text
     assert "24.90" not in text
     # Departure times make clear which train is which
-    assert "07:30" in text and "07:45" in text
+    assert "07:30" in text and "07:45" in text and "07:55" in text
     assert "07:00" not in text
     # Cheapest is listed first
     assert text.index("12.50") < text.index("18.90")
@@ -241,15 +243,16 @@ def test_render_week_global_cheapest_takes_precedence_over_week_cheaper():
     assert "← cheaper\n" not in text and not text.rstrip().endswith("← cheaper")
 
 
-def test_displayed_prices_takes_cheapest_two_per_day():
+def test_displayed_prices_takes_cheapest_three_per_day():
     record = {
         _TUE: {"checked_at": "2026-06-06T10:00:00", "trains": [
             {"depart": "07:00", "price_pence": 2100, "is_advance": False},
             {"depart": "07:15", "price_pence": 1400, "is_advance": True},
             {"depart": "07:45", "price_pence": 1900, "is_advance": True},
+            {"depart": "07:55", "price_pence": 2490, "is_advance": False},
         ]},
     }
-    assert sorted(displayed_prices(record, [_TUE])) == [1400, 1900]
+    assert sorted(displayed_prices(record, [_TUE])) == [1400, 1900, 2100]
 
 
 # --- the regression the user hit: global, not per-week ---------------------

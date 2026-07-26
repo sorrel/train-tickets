@@ -179,7 +179,6 @@ def _cfg(storage_path):
     cfg.destination_name = "Dest"
     cfg.window_start = "05:55"
     cfg.window_end = "08:05"
-    cfg.show_count = 5
     cfg.origin_nlc = "5230"
     cfg.destination_nlc = "1072"
     cfg.evening_window_start = "17:45"
