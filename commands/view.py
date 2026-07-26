@@ -10,9 +10,9 @@ from core.fares import effective_pence, shows_railcard, RAILCARD_LABEL
 from core.storage import load_record, META_KEY
 
 # How many trains are shown (and considered for the cheap markers) per day.
-# `search` saves `show_count` (5) trains per day, so this is purely a display
-# choice — raising it costs no extra API calls, it just reads more of what is
-# already in the record.
+# `search` saves every train in the window, so this is purely a display choice —
+# raising it costs no extra API calls, it just reads more of what is already in
+# the record.
 _TRAINS_PER_DAY = 3
 
 # The two directions a day can hold, in display order. Each is (trains key,

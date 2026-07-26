@@ -16,7 +16,7 @@ from core.directions import (
     Direction, morning_direction, evening_direction, other_trains_key,
 )
 from core.fares import (
-    parse_plan, earliest_n, build_options, TrainOption,
+    parse_plan, build_options, TrainOption,
     shows_railcard, RAILCARD_LABEL, options_from_record,
 )
 from core.storage import (
@@ -111,17 +111,18 @@ def day_payload(options: list[TrainOption], checked_at: str,
 
 def lookup_day(client: TrainClient, cfg: JourneyConfig, date: dt.date,
                direction: Direction | None = None) -> list[TrainOption] | None:
-    """Fetch the earliest TrainOptions for one date and direction (network).
+    """Fetch every TrainOption in the window for one date and direction (network).
 
     The journey-plan response carries no departure times — only journey refs and
     fares — so we fetch the detail (which has the times) for every journey it
-    returns, sort by departure, then keep the earliest few. Selecting before we
-    have times would slice the plan's own (non-temporal) order and miss early
-    trains. A window returns only a handful of journeys. For the evening the
-    plan's origin resolves to London Bridge, so the detail times are already the
-    London Bridge departures.
+    returns and sort by departure. We keep the lot: the detail calls have already
+    been made by then, so trimming would cost nothing and only hide trains later
+    in the window that might be cheaper than the early ones. A window returns
+    only a handful of journeys. For the evening the plan's origin resolves to
+    London Bridge, so the detail times are already the London Bridge departures.
 
-    Returns the earliest options, `[]` when the window is genuinely empty (or
+    Returns the window's options in departure order, `[]` when the window is
+    genuinely empty (or
     beyond the booking horizon), or `None` when the lookup failed (server error)
     — so the caller can leave that day's saved data untouched rather than wiping
     it as if no trains existed.
@@ -136,8 +137,7 @@ def lookup_day(client: TrainClient, cfg: JourneyConfig, date: dt.date,
         return None
     if not plan:
         return []
-    options = build_options(parse_plan(plan), fetch_detail=client.journey_detail)
-    return earliest_n(options, cfg.show_count)
+    return build_options(parse_plan(plan), fetch_detail=client.journey_detail)
 
 
 def _checked_today(prev: dict | None, direction: Direction, today: str) -> bool:
