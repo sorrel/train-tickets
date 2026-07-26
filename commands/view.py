@@ -10,7 +10,10 @@ from core.fares import effective_pence, shows_railcard, RAILCARD_LABEL
 from core.storage import load_record, META_KEY
 
 # How many trains are shown (and considered for the cheap markers) per day.
-_TRAINS_PER_DAY = 2
+# `search` saves `show_count` (5) trains per day, so this is purely a display
+# choice — raising it costs no extra API calls, it just reads more of what is
+# already in the record.
+_TRAINS_PER_DAY = 3
 
 # The two directions a day can hold, in display order. Each is (trains key,
 # price-history key, label). The morning keys are the original record keys, so a
@@ -164,7 +167,7 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
                 evening_cheapest: int | None = None, evening_flag: bool = False) -> list[str]:
     """Return display lines for one week (pure — no I/O, easy to test).
 
-    Each day shows its two cheapest trains per direction (cheapest first),
+    Each day shows its three cheapest trains per direction (cheapest first),
     labelled by departure time. A day that also holds evening trains is split
     into labelled "Morning" / "Evening" sub-sections; a day with only morning
     trains renders flat, exactly as before evening existed.
@@ -240,7 +243,7 @@ def render_week(monday: dt.date, date_strs: list[str], record: dict, today: dt.d
 
 
 def displayed_prices(record: dict, date_strs: list[str], trains_key: str = "trains") -> list[int]:
-    """The prices actually shown (cheapest two per day) for the given dates.
+    """The prices actually shown (the cheapest few per day) for the given dates.
 
     `trains_key` selects the direction ("trains" or "evening_trains"). Evening
     fares are returned at their effective price (capped at the £14.10 railcard),
