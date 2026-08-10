@@ -89,7 +89,7 @@ def refresh_price_data_command(evening: bool):
 
     if stopped_on_error:
         click.echo(f"\nStopped after {weeks_done} week(s) because a lookup failed "
-                   f"(server error), not because we reached the booking horizon. "
+                   f"(server or network error), not because we reached the booking horizon. "
                    f"Some weeks may be incomplete — re-run later to fill them in.")
     else:
         click.echo(f"\nDone. Walked {weeks_done} week(s) from {start.isoformat()}; "

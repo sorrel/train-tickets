@@ -149,6 +149,6 @@ def test_refresh_reports_error_stop_distinctly_from_horizon():
 
     result, _ = _run(fake_gather, today=dt.date(2026, 6, 7))
     assert result.exit_code == 0
-    assert "server error" in result.output.lower()
+    assert "server or network error" in result.output.lower()
     assert "re-run" in result.output.lower()
     assert "Done." not in result.output
