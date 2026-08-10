@@ -45,7 +45,8 @@ def format_day(heading: str, options: list[TrainOption], evening: bool = False) 
     lines = [click.style(heading, fg="cyan", bold=True)]
     if options is None:
         lines.append(click.style(
-            "  (lookup failed — server error; this day was left unchanged, try again later)",
+            "  (lookup failed — server or network error; this day was left unchanged, "
+            "try again later)",
             fg="yellow"))
         return "\n".join(lines)
     if not options:

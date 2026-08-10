@@ -42,6 +42,31 @@ def test_get_token_is_cached():
         assert g.call_count == 1   # second call uses the cache
 
 
+def test_token_scrape_raises_on_transport_error():
+    # A proxy/connection fault while scraping the token must surface as a
+    # TrainApiError like any other lookup failure — never a bare traceback.
+    client = TrainClient(token_page="http://page", pause_seconds=0)
+    with patch.object(client.session, "get",
+                      side_effect=requests.ConnectionError("proxy timed out")):
+        with pytest.raises(TrainApiError):
+            client.plan_day("5230", "1072", "a", "b")
+
+
+def test_token_scrape_raises_when_page_is_unavailable():
+    # No token means no lookup is possible; that must not look like an empty day.
+    client = TrainClient(token_page="http://page", pause_seconds=0)
+    with patch.object(client.session, "get", return_value=_resp(status=503, text="down")):
+        with pytest.raises(TrainApiError):
+            client.plan_day("5230", "1072", "a", "b")
+
+
+def test_token_scrape_raises_when_token_is_missing_from_page():
+    client = TrainClient(token_page="http://page", pause_seconds=0)
+    with patch.object(client.session, "get", return_value=_resp(text="<html>no token</html>")):
+        with pytest.raises(TrainApiError):
+            client.plan_day("5230", "1072", "a", "b")
+
+
 def test_plan_day_posts_expected_body():
     plan = json.loads((FIXTURES / "journey-plan-sample.json").read_text())
     client = TrainClient(token_page="http://page", pause_seconds=0)

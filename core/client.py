@@ -42,18 +42,25 @@ class TrainClient:
         self.pause_seconds = pause_seconds
         self._token: str | None = None
 
-    def get_token(self) -> str | None:
-        """Scrape (and cache) the public access token from the booking page."""
+    def get_token(self) -> str:
+        """Scrape (and cache) the public access token from the booking page.
+
+        Raises TrainApiError if the token cannot be obtained — by transport fault,
+        an unhappy booking page, or a page with no token in it. Without a token no
+        lookup is possible at all, so this must never be mistaken for a day with
+        no trains: it travels the same TrainApiError route as any other failure.
+        """
         if self._token:
             return self._token
-        resp = self.session.get(self.token_page, timeout=15)
+        try:
+            resp = self.session.get(self.token_page, timeout=15)
+        except requests.RequestException as e:
+            raise TrainApiError(f"Could not reach the booking page: {e}") from e
         if resp.status_code != 200:
-            click.echo(f"Could not load booking page (HTTP {resp.status_code}).", err=True)
-            return None
+            raise TrainApiError(f"Could not load booking page (HTTP {resp.status_code}).")
         match = _TOKEN_RE.search(resp.text)
         if not match:
-            click.echo("Could not find access token on booking page.", err=True)
-            return None
+            raise TrainApiError("Could not find access token on booking page.")
         self._token = match.group(1)
         return self._token
 
@@ -74,8 +81,7 @@ class TrainClient:
         """Make a request, returning parsed JSON, or None for an empty/beyond-horizon
         result. Raises TrainApiError for a genuine failure (so callers can tell a
         server error apart from a day that simply has no trains)."""
-        if not self.get_token():
-            return None
+        self.get_token()   # raises TrainApiError if we cannot get one
         resp = self._send(method, path, json_body)
         if resp.status_code in _RETRY_STATUSES:
             resp = self._send(method, path, json_body)   # one polite retry on a transient 5xx
