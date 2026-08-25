@@ -68,6 +68,10 @@ This is a free public endpoint for ordinary customers; we are not owed extra ser
 - `refresh-price-data` walks every future week (~12, the advance-booking horizon), so a full run is a few hundred requests. This is acceptable *only because* it is deliberately slow: the per-call pause still applies, **and** a randomised pause (`refresh_pause_min_seconds`–`refresh_pause_max_seconds`) sits between each week. It is the opposite of a burst. Keep it that way — do not parallelise it or shorten the pauses to "speed it up".
 - Never run load-style request floods, even during development or testing.
 - Tests mock all HTTP and never hit the live API.
+- Run them with `uv run python -m pytest`. `pytest` lives in
+  `[dependency-groups]`, which `uv sync` installs by default — don't move it
+  back to an optional extra, or that command breaks with a misleading
+  "No module named pytest".
 
 ## Style Rules
 
